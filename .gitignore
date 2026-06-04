@@ -1,0 +1,37 @@
+# Secrets — never commit real keys
+.env
+.env.local
+.env.production
+
+# Doppler
+.doppler
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Raw data — too large for git
+data/raw/
+
+# Claude Code
+.claude/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Pytest
+.pytest_cache/
