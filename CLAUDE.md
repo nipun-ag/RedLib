@@ -8,7 +8,7 @@ pipeline, Pinecone for vector storage, and Claude Haiku 4.5 for answer
 synthesis.
 
 ## Tech Stack
-- Frontend: Vanilla JS, HTML, CSS (Tailwind via CDN, no build step)
+- Frontend: Vanilla JS, HTML, CSS (Tailwind via CDN, no build step). Static site deployed to Vercel from frontend/ subdirectory. Backend deployed separately to Hetzner VPS.
 - Backend: FastAPI (Python)
 - RAG Framework: LlamaIndex
 - Vector DB: Pinecone (dense + sparse hybrid index)
@@ -20,26 +20,46 @@ synthesis.
 - Server: Hetzner VPS (Nginx + Gunicorn + systemd)
 - Deploy: GitHub Actions SSH deploy on push to main
 
+## Split Deployment
+Frontend and backend are deployed as separate services.
+
+Frontend: Vercel (static site, frontend/ subdirectory)
+Backend: Hetzner VPS (FastAPI, Nginx, Gunicorn, systemd)
+
+Communication: frontend JS fetches from Hetzner API over HTTPS.
+API base URL controlled by frontend/js/config.js.
+CORS: CORSMiddleware in app.py. Locked to Vercel domain in production.
+
+FastAPI does NOT serve HTML. The templates/ directory does not exist.
+Jinja2 is not used. app.py has no TemplateResponse calls.
+
+Local dev:
+  Backend: doppler run -- uvicorn app:app --reload --port 8000
+  Frontend: open frontend/index.html directly in browser, or use
+            any static file server (e.g. py -m http.server 3000
+            from the frontend/ directory)
+
 ## File Structure
 ```
 redlib/
 ├── app.py              # FastAPI app, all API routes
 ├── rag.py              # LlamaIndex query pipeline (entry point)
 ├── ingest.py           # One-time ingestion pipeline (run manually)
-├── chunker.py          # SemanticSplitterNodeParser configuration
 ├── embedder.py         # OpenAI embedding model configuration
 ├── retriever.py        # Hybrid search + RRF + Cohere rerank
 ├── router.py           # LlamaIndex RouterQueryEngine setup
 ├── synthesizer.py      # LlamaIndex ResponseSynthesizer + Haiku config
-├── datasets.py         # HuggingFace dataset loaders + cleaning
+├── data_loader.py      # HuggingFace dataset loaders + cleaning
 ├── classifier.py       # Claude Haiku technique label classifier
 ├── evaluate.py         # RAGAS evaluation suite
-├── static/
-│   ├── css/style.css
-│   └── js/app.js
-├── templates/
-│   ├── landing.html    # Landing page with disclaimer gate
-│   └── index.html      # Main search interface
+├── frontend/           # Static site. Deployed to Vercel.
+│   ├── index.html      # Landing page with disclaimer gate
+│   ├── search.html     # Main search interface
+│   ├── css/
+│   │   └── style.css
+│   └── js/
+│       ├── config.js   # API base URL configuration
+│       └── app.js
 ├── data/
 │   └── raw/            # Downloaded datasets before ingestion
 ├── docs/
@@ -90,15 +110,13 @@ Read before touching any retrieval file:
 ## Never Do These Without Asking First
 - Change the Pinecone index schema (requires full re-ingestion)
 - Change the embedding model (invalidates all stored vectors)
-- Modify chunk size or similarity threshold in chunker.py
-  (directly affects retrieval quality across the whole corpus)
 - Run ingest.py against production index without a backup plan
 - Add new pip dependencies without updating requirements.txt
 
 ## Common Task Patterns
 
 ### Adding a new dataset source
-1. Add loader + cleaning function to datasets.py
+1. Add loader + cleaning function to data_loader.py
 2. Add classifier.py pass to assign technique labels
 3. Run ingest.py to embed and upsert new records to Pinecone
 4. Update corpus stats and source list in ARCHITECTURE.md
@@ -115,10 +133,9 @@ Read before touching any retrieval file:
 3. Add request/response schema to ARCHITECTURE.md
 
 ### Debugging bad retrieval results
-1. Check chunker.py similarity threshold first
-2. Inspect Cohere rerank scores in logs
-3. Check whether query router is routing correctly
-4. Run evaluate.py to get current RAGAS baseline scores
+1. Inspect Cohere rerank scores in logs
+2. Check whether query router is routing correctly
+3. Run evaluate.py to get current RAGAS baseline scores
 
 ## Git Commit Format
 - feat: new feature
@@ -153,7 +170,7 @@ Phase 1 — In Development
 - Design locked from Google Stitch (two screens)
 - Tech stack finalized
 - Corpus sources identified (5 HuggingFace datasets, ~3,500 prompts)
-- Full RAG pipeline designed: semantic chunking + hybrid search
-  + RRF + Cohere rerank + Claude Haiku synthesis
+- Full RAG pipeline designed: hybrid search + RRF + Cohere rerank
+  + Claude Haiku synthesis
 - LlamaIndex components mapped to all pipeline stages
 - Nothing built yet — ready to start implementation

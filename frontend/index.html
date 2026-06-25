@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedLib — Search Jailbreak Prompts</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #131313;
+            color: #e5e2e1;
+            overflow: hidden;
+        }
+
+        /* Blueprint grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(0deg, transparent 24%, rgba(31, 31, 31, .05) 25%, rgba(31, 31, 31, .05) 26%, transparent 27%, transparent 74%, rgba(31, 31, 31, .05) 75%, rgba(31, 31, 31, .05) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(31, 31, 31, .05) 25%, rgba(31, 31, 31, .05) 26%, transparent 27%, transparent 74%, rgba(31, 31, 31, .05) 75%, rgba(31, 31, 31, .05) 76%, transparent 77%, transparent);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Hero gradient that follows mouse */
+        .hero-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            background: radial-gradient(circle at 50% 50%, rgba(229, 9, 20, 0.08), transparent 70%);
+            mix-blend-mode: screen;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background-color: #131313;
+            border-bottom: 1px solid #5e3f3b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 32px;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 0;
+        }
+
+        .wordmark {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: #e5e2e1;
+            letter-spacing: -0.02em;
+        }
+
+        .red-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #e50914;
+            margin-left: 2px;
+            margin-top: 4px;
+            flex-shrink: 0;
+        }
+
+        .github-button {
+            background-color: #e50914;
+            color: #fff7f6;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 16px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 150ms ease;
+        }
+
+        .github-button:hover {
+            background-color: #c0000c;
+        }
+
+        .page-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            z-index: 2;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            margin-top: 64px;
+            overflow-y: auto;
+        }
+
+        .content-box {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .hero-section {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .hero-heading {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 32px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #e5e2e1;
+            margin-bottom: 24px;
+        }
+
+        .hero-subheading {
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            color: #e9bcb6;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            background-color: #1c1b1b;
+            border: 1px solid #5e3f3b;
+            margin-bottom: 48px;
+            overflow: hidden;
+        }
+
+        .stat-item {
+            padding: 24px;
+            text-align: center;
+            border-right: 1px solid #5e3f3b;
+        }
+
+        .stat-item:last-child {
+            border-right: none;
+        }
+
+        .stat-number {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 24px;
+            font-weight: 600;
+            color: #e5e2e1;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            font-weight: 500;
+            color: #e9bcb6;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            letter-spacing: 0.1em;
+        }
+
+        .disclaimer-box {
+            background-color: #1c1b1b;
+            border: 1px solid #5e3f3b;
+            padding: 24px;
+            padding-left: 32px;
+            position: relative;
+            margin-bottom: 32px;
+        }
+
+        .disclaimer-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background-color: #e50914;
+        }
+
+        .disclaimer-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .warning-icon {
+            color: #e50914;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .disclaimer-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            font-weight: 500;
+            color: #e9bcb6;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            letter-spacing: 0.05em;
+        }
+
+        .disclaimer-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            color: #e9bcb6;
+            line-height: 1.6;
+        }
+
+        .consent-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 24px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            color: #e9bcb6;
+        }
+
+        .checkbox-custom {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #e50914;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .consent-button {
+            width: 100%;
+            height: 52px;
+            background-color: #e50914;
+            color: #fff7f6;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: transform 150ms ease;
+        }
+
+        .consent-button:hover:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .consent-button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .consent-button:disabled {
+            background-color: rgba(229, 9, 20, 0.4);
+            opacity: 0.5;
+            filter: grayscale(1);
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Blueprint grid (handled by body::before) -->
+    <div class="hero-gradient" id="heroGradient"></div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="wordmark">RedLib</div>
+                <div class="red-dot"></div>
+            </div>
+            <a href="https://github.com/nipun-ag/redlib" target="_blank" class="github-button">GitHub</a>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-wrapper">
+            <div class="content-box">
+                <!-- Hero Section -->
+                <div class="hero-section">
+                    <div class="hero-heading">RedLib</div>
+                    <div class="hero-subheading">Search 3,500+ real jailbreak prompts by technique, pattern, or attack vector.</div>
+
+                    <!-- Stats -->
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-number">3,500+</div>
+                            <div class="stat-label">Prompts</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">10</div>
+                            <div class="stat-label">Techniques</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">4</div>
+                            <div class="stat-label">Sources</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Disclaimer Box -->
+                <div class="disclaimer-box">
+                    <div class="disclaimer-accent"></div>
+                    <div class="disclaimer-header">
+                        <div class="warning-icon">⚠</div>
+                        <div class="disclaimer-title">Responsible Use Required</div>
+                    </div>
+                    <div class="disclaimer-text">
+                        This tool indexes real adversarial prompts collected from public AI safety research datasets. It is intended solely for AI safety research, red teaming, and educational purposes. By proceeding, you confirm that you are an AI safety practitioner, researcher, or security professional, and that you will not use this corpus to cause harm.
+                    </div>
+                </div>
+
+                <!-- Consent Row -->
+                <div class="consent-row">
+                    <input type="checkbox" id="consentCheckbox" class="checkbox-custom">
+                    <label for="consentCheckbox">I am an AI safety practitioner and I acknowledge responsible use.</label>
+                </div>
+
+                <!-- Consent Button -->
+                <button id="consentButton" class="consent-button" disabled>
+                    I UNDERSTAND, PROCEED
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check localStorage on load and redirect if already consented
+        function checkConsent() {
+            if (localStorage.getItem('redlib_consent') === 'true') {
+                window.location.href = 'search.html';
+                return;
+            }
+
+            // Checkbox and button interaction
+            const checkbox = document.getElementById('consentCheckbox');
+            const button = document.getElementById('consentButton');
+
+            checkbox.addEventListener('change', function() {
+                button.disabled = !this.checked;
+            });
+
+            button.addEventListener('click', function() {
+                localStorage.setItem('redlib_consent', 'true');
+                window.location.href = 'search.html';
+            });
+
+            // Hero gradient that follows mouse
+            const heroGradient = document.getElementById('heroGradient');
+            document.addEventListener('mousemove', function(e) {
+                const x = (e.clientX / window.innerWidth) * 100;
+                const y = (e.clientY / window.innerHeight) * 100;
+                heroGradient.style.background = `radial-gradient(circle at ${x}% ${y}%, rgba(229, 9, 20, 0.12), transparent 70%)`;
+            });
+        }
+
+        // Run on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkConsent);
+        } else {
+            checkConsent();
+        }
+    </script>
+</body>
+</html>

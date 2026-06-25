@@ -1,0 +1,9 @@
+datasets
+anthropic
+llama-index
+llama-index-llms-anthropic
+llama-index-vector-stores-qdrant
+qdrant-client
+llama-index-postprocessor-cohere-rerank
+cohere
+tiktoken

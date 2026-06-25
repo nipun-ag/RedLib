@@ -1,63 +1,44 @@
-# RedLib — Architecture
+# RedLib - Architecture
 
 ## Overview
-RedLib ingests ~3,500 real jailbreak prompts from public research
-datasets, indexes them in Pinecone using a hybrid dense + sparse
-approach, and exposes a FastAPI backend that runs a full production
-RAG pipeline: semantic chunking → hybrid search → RRF → Cohere rerank
-→ Claude Haiku synthesis. A Vanilla JS frontend serves two screens:
-a gated landing page and the main search interface.
+RedLib ingests a corpus of real jailbreak prompts from public research
+datasets, indexes them in Qdrant Cloud using hybrid dense + sparse
+retrieval, and exposes a FastAPI backend that runs a RAG pipeline:
+hybrid search -> RRF -> Cohere rerank -> Claude Haiku synthesis.
+
+Frontend assets live under `frontend/` as static HTML/CSS/JS.
 
 ---
 
 ## File / Folder Structure
 
-```
+```text
 redlib/
-├── app.py              # FastAPI app entry point. All API routes.
-│                       # No business logic here — imports from modules.
-├── rag.py              # Assembles the full LlamaIndex query pipeline.
-│                       # Imports router, retriever, synthesizer.
-├── ingest.py           # One-time ingestion script. Run manually.
-│                       # Loads datasets → cleans → classifies →
-│                       # chunks → embeds → upserts to Pinecone.
-├── chunker.py          # Configures LlamaIndex SemanticSplitterNodeParser.
-│                       # Sets similarity threshold, embed model.
-├── embedder.py         # Configures OpenAI text-embedding-3-small.
-│                       # Used by chunker and retriever.
-├── retriever.py        # Configures LlamaIndex QueryFusionRetriever
-│                       # (hybrid search + RRF) and CohereRerank
-│                       # postprocessor.
-├── router.py           # Configures LlamaIndex RouterQueryEngine.
-│                       # Routes: semantic query vs conceptual question.
-├── synthesizer.py      # Configures LlamaIndex ResponseSynthesizer
-│                       # with Claude Haiku 4.5 as the LLM.
-├── datasets.py         # HuggingFace dataset loaders. One function
-│                       # per source dataset. Returns cleaned records.
-├── classifier.py       # Calls Claude Haiku to assign one of 10
-│                       # technique labels to each prompt during ingestion.
-├── evaluate.py         # RAGAS evaluation suite. Run manually or on
-│                       # sampled queries in background.
-├── static/
-│   ├── css/style.css   # Custom CSS layered on top of Tailwind CDN.
-│   └── js/app.js       # All frontend logic. Fetch calls, DOM updates,
-│                       # sidebar filter state, expand/collapse.
-├── templates/
-│   ├── landing.html    # Landing page. Disclaimer gate + consent flow.
-│   └── index.html      # Main search interface. Sidebar + results.
-├── data/
-│   └── raw/            # Raw downloaded dataset files before ingestion.
-│                       # Not committed to git (.gitignore).
-├── docs/
-│   ├── ARCHITECTURE.md # This file.
-│   └── CONTEXT.md      # AI synthesis prompt rules and constraints.
-├── .env.example        # Reference only. Lists required var names.
-│                       # Never populate. Never commit real keys.
-├── requirements.txt    # All Python dependencies.
-├── CLAUDE.md           # Coding agent instructions.
-├── DESIGN.md           # Full design system from Stitch source.
-├── PROGRESS.md         # Session log and deferred features.
-└── README.md           # Human-facing project description.
+|- app.py              # FastAPI app entry point. All API routes.
+|- rag.py              # Assembles the full LlamaIndex query pipeline.
+|- ingest.py           # Ingestion script. Run manually.
+|- embedder.py         # Configures OpenAI text-embedding-3-small.
+|- retriever.py        # Configures Qdrant hybrid retrieval and Cohere rerank.
+|- router.py           # Configures LlamaIndex RouterQueryEngine.
+|- synthesizer.py      # Configures response synthesis with Claude Haiku 4.5.
+|- data_loader.py      # HuggingFace dataset loaders and record cleaning.
+|- classifier.py       # Assigns one of 10 technique labels during ingestion.
+|- frontend/           # Static frontend assets
+|  |- index.html       # Landing page
+|  |- search.html      # Main search interface
+|  |- css/
+|  |  `- style.css
+|  `- js/
+|     |- config.js
+|     `- app.js
+|- docs/
+|  |- ARCHITECTURE.md  # This file
+|  `- CONTEXT.md       # Synthesis prompt rules and constraints
+|- requirements.txt    # Python dependencies
+|- AGENTS.md           # Coding-agent instructions
+|- DESIGN.md           # Design system and UI guidance
+|- PROGRESS.md         # Session log and project progress
+`- README.md           # Human-facing project description
 ```
 
 ---
@@ -90,65 +71,44 @@ Response:
     }
   ],
   "technique_breakdown": {
-    "Persona Hijacking": 0,
-    "Fictional Framing": 0
+    "Persona Hijacking": 0
   },
   "result_count": 0,
   "query_type": "semantic | conceptual"
 }
 ```
 
----
+Implementation details:
+- `category_filter` is applied as a metadata filter on `technique`
+- `prompt_excerpt` is built from the node body, not from metadata
+- `query_type` is `"semantic"` when source nodes are returned, otherwise `"conceptual"`
 
 ### GET /api/categories
-Returns all technique categories with corpus counts.
-
-Response:
-```json
-{
-  "categories": [
-    {
-      "name": "string",
-      "count": 0,
-      "icon": "string"
-    }
-  ]
-}
-```
-
----
+Returns the technique-category list used by the frontend.
 
 ### GET /api/stats
-Returns corpus statistics for the stats bar.
-
-Response:
-```json
-{
-  "total_prompts": 0,
-  "total_sources": 0,
-  "last_sync": "YYYY-MM-DD"
-}
-```
+Returns corpus statistics for the frontend stats bar.
 
 ---
 
 ## Data Sources
 
-| Dataset                                    | Source      | Est. Size | Quality         |
-|--------------------------------------------|-------------|-----------|-----------------|
-| verazuo/jailbreak_llms                     | HuggingFace | ~1,405    | High — CCS 2024 |
-| TrustAIRLab/in-the-wild-jailbreak-prompts  | HuggingFace | ~900      | High            |
-| rubend18/ChatGPT-Jailbreak-Prompts         | HuggingFace | ~160      | Medium          |
-| jackhhao/jailbreak-classification          | HuggingFace | ~1,000    | High            |
-| HarmBench                                  | GitHub      | ~400      | High — benchmark|
+Current ingestion code loads:
 
-Estimated total after deduplication: 3,500 to 4,000 unique prompts.
+| Loader Function     | Dataset / Configs                                        |
+|---------------------|----------------------------------------------------------|
+| `load_trustairlab`  | `TrustAIRLab/in-the-wild-jailbreak-prompts` (2 configs) |
+| `load_rubend18`     | `rubend18/ChatGPT-Jailbreak-Prompts`                     |
+| `load_jackhhao`     | `jackhhao/jailbreak-classification`                      |
+| `load_harmbench`    | `swiss-ai/harmbench` (`HumanJailbreaks`)                 |
+
+`load_all_datasets()` deduplicates records on the raw `text` field.
 
 ---
 
-## Technique Categories (10)
+## Technique Categories
 
-Assigned by classifier.py during ingestion via Claude Haiku:
+Assigned by `classifier.py` during ingestion:
 
 1. Persona Hijacking
 2. Fictional Framing
@@ -163,179 +123,182 @@ Assigned by classifier.py during ingestion via Claude Haiku:
 
 ---
 
-## Pinecone Schema
+## Qdrant Collection Schema
 
-Index type: hybrid (dense + sparse)
+Collection name: `redlib`
 
-Each vector upserted with metadata:
+Dense vectors:
+- name: `dense`
+- size: `1536`
+- distance: `cosine`
+
+Sparse vectors:
+- name: `sparse`
+- index: `SparseIndexParams()`
+
+`ingest.py` creates the collection if it does not exist. `retriever.py`
+and `ingest.py` both connect to the same collection.
+
+---
+
+## Node and Metadata Schema
+
+Each prompt is stored as a `TextNode`.
+
+Prompt text:
+- lives in the `TextNode` body (`TextNode.text`)
+- is the source used for retrieval excerpts
+- remains available for retrieval and synthesis without storing it in metadata
+
+Metadata stored on each node:
 ```json
 {
-  "id": "source_dataset__prompt_id__chunk_index",
-  "values": [/* dense vector, 1536 dims (text-embedding-3-small) */],
-  "sparse_values": {/* BM25 sparse vector */},
-  "metadata": {
-    "text": "string",
-    "technique": "string",
-    "source": "string",
-    "prompt_id": "string",
-    "chunk_index": 0
-  }
+  "source": "string",
+  "technique": "string",
+  "prompt_id": "string"
 }
 ```
+
+`metadata["text"]` is intentionally not stored. This prevents LlamaIndex
+from duplicating the full prompt in the embedding input when it builds
+the content used for embedding.
+
+ID format:
+- `generate_id(source, text)` -> `"{source}__{md5_prefix}"`
+- `prompt_id` stored in metadata is the hash suffix after `__`
 
 ---
 
 ## Full Data Flow
 
-### Ingestion (run once)
-```
+### Ingestion
+```text
 HuggingFace datasets
-      ↓ datasets.py
-Load + clean → LlamaIndex Document objects
-      ↓ classifier.py
-Claude Haiku assigns technique label → stored in metadata
-      ↓ chunker.py
-SemanticSplitterNodeParser → splits on cosine similarity drop
-(threshold: 0.7, model: text-embedding-3-small)
-Short prompts → single node, no split
-      ↓ embedder.py
-OpenAI text-embedding-3-small → dense vector per node
-      ↓ retriever.py (BM25Encoder)
-Pinecone BM25Encoder → sparse vector per node
-      ↓ Pinecone
-Upsert: dense vector + sparse vector + metadata
+      -> data_loader.py
+Load + clean + deduplicate records
+      -> ingest.py checkpoint loader
+Resume prior classification progress if ingest_checkpoint.json exists
+      -> classifier.py
+Assign technique label with timeout protection
+      -> ingest.py checkpoint saver
+Persist classified progress during long runs
+      -> embedder.py
+Configure OpenAI text-embedding-3-small
+      -> ingest.py
+Create TextNode objects with prompt text in the node body
+      -> LlamaIndex embed path
+Embed node content
+      -> Qdrant
+Insert dense + sparse vectors with metadata into collection redlib
 ```
 
 ### Query Time
-```
+```text
 User query (POST /api/query)
-      ↓ router.py (RouterQueryEngine)
-      ├── semantic query → QueryFusionRetriever
-      │         ↓
-      │   Dense search (Pinecone vector similarity)
-      │   Sparse search (Pinecone BM25)
-      │         ↓ RRF (QueryFusionRetriever native)
-      │   Merged ranked list
-      │         ↓ CohereRerank postprocessor
-      │   Top 5 reranked nodes
-      │         ↓ synthesizer.py (ResponseSynthesizer + Haiku)
-      │   Synthesized answer
-      │
-      └── conceptual question → Claude Haiku direct (no retrieval)
-            ↓
-      Direct answer
+      -> router.py (RouterQueryEngine)
+      |-- semantic query -> QueryFusionRetriever
+      |         ->
+      |   Dense search + sparse search in Qdrant
+      |         -> RRF
+      |   Merged ranked list
+      |         -> CohereRerank
+      |   Top reranked nodes
+      |         -> synthesizer.py
+      |   Claude Haiku synthesized answer
+      |
+      `-- conceptual question -> direct answer path
 
-      ↓ app.py
+      -> app.py
 Assemble response: answer + result cards + technique breakdown
-      ↓
+      ->
 JSON response to frontend
 ```
 
 ---
 
+## Ingestion Safeguards
+
+Current `ingest.py` includes:
+
+- Checkpoint resume via `ingest_checkpoint.json`
+- Classification timeout protection via `classify_with_timeout()`
+- Token counting using `tiktoken` for the embedding model
+- Logging of both raw prompt token count and exact embedded-content token count
+- Oversized prompt skip guard based on the exact content that will be embedded
+- Batch insertion logging around `index.insert_nodes(nodes)`
+
+Checkpoint behavior:
+- stores classified records plus the last processed index
+- allows long ingestion runs to resume after interruption
+- removes the checkpoint file after a successful full run
+
+---
+
 ## LlamaIndex Component Map
 
-| Module          | LlamaIndex Class                  | Role                            |
-|-----------------|-----------------------------------|---------------------------------|
-| chunker.py      | SemanticSplitterNodeParser        | Semantic chunking at ingestion  |
-| embedder.py     | OpenAIEmbedding                   | text-embedding-3-small          |
-| retriever.py    | QueryFusionRetriever              | Hybrid search + RRF             |
-| retriever.py    | PineconeVectorStore               | Dense + sparse vector store     |
-| retriever.py    | CohereRerank                      | Reranking postprocessor         |
-| router.py       | RouterQueryEngine                 | Query intent classification     |
-| synthesizer.py  | ResponseSynthesizer               | Answer generation               |
-| synthesizer.py  | Anthropic (Claude Haiku 4.5)      | LLM for synthesis               |
+| Module           | LlamaIndex Class       | Role                        |
+|------------------|------------------------|-----------------------------|
+| `embedder.py`    | `OpenAIEmbedding`      | text-embedding-3-small      |
+| `retriever.py`   | `QueryFusionRetriever` | Hybrid search + RRF         |
+| `retriever.py`   | `QdrantVectorStore`    | Dense + sparse vector store |
+| `retriever.py`   | `CohereRerank`         | Reranking postprocessor     |
+| `router.py`      | `RouterQueryEngine`    | Query intent classification |
+| `synthesizer.py` | `ResponseSynthesizer`  | Answer generation           |
+| `synthesizer.py` | `Anthropic`            | LLM for synthesis           |
 
 ---
 
 ## Environment Variables
 
-| Variable           | Used By              | Purpose                              |
-|--------------------|----------------------|--------------------------------------|
-| PINECONE_API_KEY   | retriever.py         | Pinecone authentication              |
-| PINECONE_INDEX_NAME| retriever.py         | Target index name                    |
-| OPENAI_API_KEY     | embedder.py          | text-embedding-3-small               |
-| ANTHROPIC_API_KEY  | synthesizer.py       | Claude Haiku 4.5                     |
-| COHERE_API_KEY     | retriever.py         | Cohere Rerank API                    |
-| HUGGINGFACE_TOKEN  | datasets.py          | HuggingFace dataset access           |
-| DOPPLER_TOKEN      | all                  | Secrets injection (production)       |
+Actual variables used by the current code:
+
+| Variable            | Used By                         | Purpose                    |
+|---------------------|---------------------------------|----------------------------|
+| `QDRANT_URL`        | `retriever.py`, `ingest.py`     | Qdrant Cloud endpoint      |
+| `QDRANT_API_KEY`    | `retriever.py`, `ingest.py`     | Qdrant Cloud authentication|
+| `OPENAI_API_KEY`    | `embedder.py`                   | Embeddings                 |
+| `ANTHROPIC_API_KEY` | `classifier.py`, `synthesizer.py` | Claude Haiku 4.5        |
+| `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API          |
+| `HUGGINGFACE_TOKEN` | `data_loader.py`                | HuggingFace dataset access |
+| `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection          |
 
 ---
 
 ## Local Development Setup
 
 ```bash
-# 1. Clone repo
 git clone https://github.com/nipun-ag/redlib
 cd redlib
 
-# 2. Create virtual environment
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Install Doppler CLI (first time only)
-# Mac: brew install dopplerhq/cli/doppler
-# Linux: see https://docs.doppler.com/docs/install-cli
 doppler login
-doppler setup  # Select the redlib project and config
+doppler setup
 
-# 5. Run ingestion via Doppler (first time only)
 doppler run -- python ingest.py
-
-# 6. Start development server via Doppler
 doppler run -- uvicorn app:app --reload --port 8000
-
-# 7. Open browser
-# http://localhost:8000
 ```
 
-Note: Never create a real .env file with actual keys.
-.env.example in the repo lists all required variable names
-as a reference. All secrets live in Doppler only.
+Frontend assets can be opened directly from `frontend/` or served with any
+static file server during local development.
 
 ---
 
-## Deployment (Hetzner VPS)
+## Deployment
 
-```
-GitHub push to main
-      ↓ GitHub Actions
-SSH into Hetzner VPS
-      ↓
-git pull + pip install -r requirements.txt
-      ↓
-systemctl restart redlib
-      ↓
-systemd service runs: doppler run -- gunicorn app:app
-Doppler injects all secrets into the process at start
-      ↓
-Nginx serves on port 80/443
-Gunicorn runs FastAPI on port 8000 internally
-Cloudflare proxies DNS + DDoS protection
-Let's Encrypt handles SSL
-```
-
-Nginx config: reverse proxy from 443 → localhost:8000
-Rate limiting: 10 requests/second per IP on /api/ routes
+Deployment is split:
+- frontend static assets from `frontend/`
+- FastAPI backend deployed separately
+- Doppler-managed secrets
+- GitHub Actions deploy workflow on push to `main`
 
 ---
 
-## Known Constraints and Gotchas
+## Constraints
 
-- Pinecone free tier: 1 index, 2GB storage. Sufficient for ~4,000
-  vectors at 1536 dims but monitor usage as corpus grows.
-- Semantic chunking requires an embedding pass at ingestion time,
-  making ingest.py slower. This is expected — run it once.
-- Changing the embedding model after ingestion invalidates all stored
-  vectors. The entire index must be rebuilt.
-- HarmBench requires GitHub download, not HuggingFace API. Handle
-  separately in datasets.py.
-- BM25Encoder must be fit on the full corpus before ingestion. Fit
-  once, serialize, reuse. Do not refit on partial data.
-- RAGAS evaluation requires OpenAI API calls internally. It is not
-  free to run. Use sampled queries (20-30) not the full corpus.
-- The "DETAILED REPORT" link on result cards has no backing page in
-  Phase 1. Either remove it or wire to a modal.
+- Changing the embedding model invalidates stored vectors and requires re-ingestion.
+- Prompt text is stored in the `TextNode` body, not in metadata.
+- Oversize protection is based on the exact content sent to the embedding model.

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedLib — Search Jailbreak Prompts</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="header-wordmark">RedLib</div>
+            <div class="header-dot"></div>
+        </div>
+        <a href="https://github.com/nipun-ag/redlib" target="_blank" class="github-button">GitHub</a>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="section-label">Techniques</div>
+            <div id="technique-list"></div>
+            <div class="sidebar-footer">
+                <div class="section-label">Last Sync</div>
+                <span id="last-sync-date">—</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Search -->
+            <div class="search-wrapper">
+                <div class="search-icon">🔍</div>
+                <input type="text" id="search-input" class="search-input" placeholder="Search jailbreak techniques, attack patterns, or specific prompts...">
+                <button id="search-btn" class="search-btn">Search</button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-cell">
+                    <div class="stat-number" id="stat-prompts">—</div>
+                    <div class="stat-label">Prompts</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-number" id="stat-sources">—</div>
+                    <div class="stat-label">Sources</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-number" id="stat-sync">—</div>
+                    <div class="stat-label">Last Sync</div>
+                </div>
+            </div>
+
+            <!-- AI Summary -->
+            <div class="section-label">AI Summary</div>
+            <div class="ai-summary" id="ai-summary">
+                <div class="ai-summary-header">
+                    <div class="ai-summary-icon">◈</div>
+                    <div class="ai-summary-label">AI Summary</div>
+                </div>
+                <p id="summary-text"></p>
+            </div>
+
+            <!-- Results -->
+            <div class="section-label">Vulnerability Feed</div>
+            <div id="result-count"></div>
+            <div id="results-container"></div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-box">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <div class="modal-header">
+                <div class="modal-prompt-id" id="modal-prompt-id"></div>
+                <div class="modal-technique" id="modal-technique"></div>
+            </div>
+            <div class="modal-text" id="modal-prompt-text"></div>
+            <div class="modal-source">
+                Source: <span class="modal-source-name" id="modal-source"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
