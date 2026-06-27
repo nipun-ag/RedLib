@@ -1,17 +1,22 @@
 import logging
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from llama_index.core.schema import MetadataMode
-from llama_index.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
+from llama_index.core.vector_stores import (
+    MetadataFilters,
+    MetadataFilter,
+    FilterOperator,
+)
+from qdrant_client import QdrantClient
 from rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
+QDRANT_COLLECTION_NAME = "redlib"
 
 
 # Pydantic models
@@ -53,6 +58,28 @@ class StatsResponse(BaseModel):
     last_sync: str
 
 
+def get_qdrant_client() -> QdrantClient:
+    """Configure and return a Qdrant client for lightweight app queries."""
+    qdrant_url = os.environ.get("QDRANT_URL")
+    qdrant_api_key = os.environ.get("QDRANT_API_KEY")
+
+    if not qdrant_url:
+        error_msg = "QDRANT_URL environment variable not set"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+    if not qdrant_api_key:
+        error_msg = "QDRANT_API_KEY environment variable not set"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+    return QdrantClient(
+        url=qdrant_url,
+        api_key=qdrant_api_key,
+        timeout=120,
+    )
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -82,22 +109,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-# API Routes
-@app.get("/")
-async def root() -> FileResponse:
-    """Serve the landing page."""
-    return FileResponse("templates/landing.html")
-
-
-@app.get("/search")
-async def search() -> FileResponse:
-    """Serve the main search interface."""
-    return FileResponse("templates/index.html")
 
 
 @app.post("/api/query")
@@ -195,8 +206,7 @@ async def get_categories() -> CategoriesResponse:
     """
     Returns all 10 technique categories with counts.
 
-    Phase 1: Counts are hardcoded as 0. Will be populated from
-    Pinecone metadata in a later session.
+    Phase 1: Counts remain hardcoded as 0.
     """
     categories = [
         {"name": "Persona Hijacking", "count": 0, "icon": "psychology_alt"},
@@ -233,15 +243,31 @@ async def get_categories() -> CategoriesResponse:
 async def get_stats() -> StatsResponse:
     """
     Returns corpus statistics for the stats bar.
-
-    Phase 1: Stats are hardcoded. Will be populated from Pinecone
-    metadata queries in a later session.
     """
-    return StatsResponse(
-        total_prompts=2500,
-        total_sources=4,
-        last_sync="2026-06-04",
-    )
+    try:
+        loop = asyncio.get_event_loop()
+        total_prompts = await loop.run_in_executor(
+            None,
+            lambda: get_qdrant_client().count(
+                collection_name=QDRANT_COLLECTION_NAME,
+                exact=True,
+            ).count,
+        )
+
+        return StatsResponse(
+            total_prompts=total_prompts,
+            total_sources=4,
+            last_sync="2026-06-28",
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to load stats from Qdrant: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load live corpus stats from Qdrant",
+        )
 
 
 if __name__ == "__main__":

@@ -89,6 +89,12 @@ Returns the technique-category list used by the frontend.
 ### GET /api/stats
 Returns corpus statistics for the frontend stats bar.
 
+Implementation details:
+- `total_prompts` is read live from the Qdrant `redlib` collection via a
+  lightweight `QdrantClient.count(...)` call
+- `total_sources` currently remains static at `4`
+- `last_sync` currently remains a static date string in the API response
+
 ---
 
 ## Data Sources
@@ -254,8 +260,8 @@ Actual variables used by the current code:
 
 | Variable            | Used By                         | Purpose                    |
 |---------------------|---------------------------------|----------------------------|
-| `QDRANT_URL`        | `retriever.py`, `ingest.py`     | Qdrant Cloud endpoint      |
-| `QDRANT_API_KEY`    | `retriever.py`, `ingest.py`     | Qdrant Cloud authentication|
+| `QDRANT_URL`        | `app.py`, `retriever.py`, `ingest.py`     | Qdrant Cloud endpoint      |
+| `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py`     | Qdrant Cloud authentication|
 | `OPENAI_API_KEY`    | `embedder.py`                   | Embeddings                 |
 | `ANTHROPIC_API_KEY` | `classifier.py`, `synthesizer.py` | Claude Haiku 4.5        |
 | `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API          |

@@ -1,6 +1,46 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Replaced stale hardcoded API stats with a live Qdrant-backed count.
+
+Issue:
+- `GET /api/stats` was still returning a hardcoded
+  `total_prompts=2500`, which no longer matched the live `redlib`
+  collection and caused the frontend stats bar to drift from the actual
+  corpus size.
+- The route also still referenced the old Pinecone-era plan in comments,
+  even though the backend now uses Qdrant Cloud.
+
+Change:
+- Updated `app.py` so `/api/stats` creates a lightweight `QdrantClient`
+  using the same `QDRANT_URL` and `QDRANT_API_KEY` environment-variable
+  pattern used elsewhere in the project.
+- Replaced the hardcoded prompt total with a live
+  `QdrantClient.count(collection_name="redlib", exact=True)` lookup.
+- Kept the existing response shape unchanged:
+  `total_prompts`, `total_sources`, and `last_sync`.
+- Left `total_sources=4` static for now because the configured source
+  list is stable.
+- Updated `docs/ARCHITECTURE.md` to describe the live Qdrant-backed
+  stats behavior and to note that `app.py` now reads the Qdrant
+  connection variables directly.
+
+Why this was needed:
+- This was a correctness fix for backend API data, not an architectural
+  retrieval change. The app already depended on Qdrant for search, so
+  reading the collection point count directly was the right way to avoid
+  stale fake totals.
+- The endpoint now fails clearly if the Qdrant lookup fails instead of
+  silently returning outdated numbers.
+
+Result:
+- `/api/stats` now reports the live prompt count from the `redlib`
+  collection while preserving the existing JSON shape consumed by the
+  frontend.
+
+---
+
+## 2026-06-28
 Aligned the synthesizer prompt wiring with the installed LlamaIndex version.
 
 Issue:
