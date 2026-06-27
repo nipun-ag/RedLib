@@ -1,5 +1,39 @@
 # RedLib — Progress Log
 
+## 2026-06-28
+Aligned retriever construction with the installed LlamaIndex version.
+
+Issue:
+- Backend startup was failing during retriever initialization because
+  `retriever.py` called `QdrantVectorStore.as_retriever(...)`, but the
+  installed LlamaIndex build does not expose that method on the Qdrant
+  vector store implementation.
+
+Change:
+- Updated `retriever.py` to keep building the `QdrantVectorStore` and
+  `VectorStoreIndex` exactly as before, but route the sparse retriever
+  through `VectorStoreIndex.as_retriever(...)` instead of calling the
+  missing method on the vector store object.
+- Preserved the documented retrieval flow:
+  dense search + sparse search -> RRF via `QueryFusionRetriever` ->
+  Cohere rerank -> Claude synthesis.
+- Preserved the existing Qdrant collection name, hybrid-enabled vector
+  store configuration, metadata filtering support, reranking model, and
+  embedding model.
+
+Why this was needed:
+- This was a version-compatibility fix, not an architectural change.
+  The documented retrieval design was still correct, but one of the
+  construction patterns in the implementation was ahead of the installed
+  LlamaIndex API surface.
+
+Result:
+- Backend initialization should now progress past the previous
+  `'QdrantVectorStore' object has no attribute 'as_retriever'` failure
+  without changing ingestion, query flow, or API response behavior.
+
+---
+
 ## 2026-06-26
 Repository-wide documentation synchronized with the current implementation,
 and the ingestion pipeline debugging work was documented end-to-end.

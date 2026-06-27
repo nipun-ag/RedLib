@@ -76,8 +76,12 @@ def get_retriever(embed_model, top_k: int = 20):
         index=index_obj, similarity_top_k=top_k
     )
 
-    # Create sparse retriever using Pinecone's BM25
-    sparse_retriever = vector_store.as_retriever(similarity_top_k=top_k)
+    # Create sparse retriever through the index for LlamaIndex 0.14.22 compatibility.
+    sparse_retriever = index_obj.as_retriever(
+        similarity_top_k=top_k,
+        vector_store_query_mode="sparse",
+        sparse_top_k=top_k,
+    )
 
     # Combine into QueryFusionRetriever with RRF
     retriever = QueryFusionRetriever(
