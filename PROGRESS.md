@@ -1,6 +1,41 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Aligned the synthesizer prompt wiring with the installed LlamaIndex version.
+
+Issue:
+- Backend startup was failing in `synthesizer.py` because
+  `get_response_synthesizer(...)` was called with `system_prompt=...`,
+  but the installed LlamaIndex 0.14.22 factory no longer accepts that
+  keyword argument.
+
+Change:
+- Updated `synthesizer.py` to preserve the existing RedLib synthesis
+  constraints by moving the live `SYSTEM_PROMPT` into supported
+  `PromptTemplate` objects.
+- Wired those templates into `get_response_synthesizer(...)` through
+  `text_qa_template` and `refine_template`, which are supported by the
+  installed API surface.
+- Kept Claude Haiku 4.5 as the synthesis model and kept compact response
+  mode unchanged.
+
+Why this was needed:
+- This was a compatibility fix, not a synthesis-policy change. The
+  documented behavior in `docs/CONTEXT.md` remained correct, but the
+  implementation was still using an older prompt-injection pattern that
+  no longer matches the installed LlamaIndex factory signature.
+- Compact mode in this version uses both an initial QA prompt and a
+  refine prompt, so the constraints needed to be preserved in both
+  templates rather than only on the first pass.
+
+Result:
+- Backend initialization should now progress past the previous
+  `unexpected keyword argument 'system_prompt'` failure while preserving
+  RedLib's grounded, compact, non-reproductive answer constraints.
+
+---
+
+## 2026-06-28
 Aligned retriever construction with the installed LlamaIndex version.
 
 Issue:

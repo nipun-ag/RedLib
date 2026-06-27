@@ -2,6 +2,7 @@ import os
 import logging
 from llama_index.llms.anthropic import Anthropic
 from llama_index.core.response_synthesizers import get_response_synthesizer
+from llama_index.core.prompts import PromptTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,34 @@ If the retrieved chunks are off-topic, low-confidence, or don't match the query:
 - Do NOT invent or hallucinate an answer
 - Suggest rephrasing the query if helpful"""
 
+TEXT_QA_TEMPLATE = PromptTemplate(
+    SYSTEM_PROMPT
+    + """
+
+Context information is below.
+---------------------
+{context_str}
+---------------------
+Given the context information and not prior knowledge, answer the query.
+Query: {query_str}
+Answer: """
+)
+
+REFINE_TEMPLATE = PromptTemplate(
+    SYSTEM_PROMPT
+    + """
+
+The original query is as follows: {query_str}
+We have provided an existing answer: {existing_answer}
+We have the opportunity to refine the existing answer only if needed with some more context below.
+------------
+{context_msg}
+------------
+Given the new context, refine the original answer to better answer the query while preserving all RedLib constraints above.
+If the context is not useful, return the original answer.
+Refined Answer: """
+)
+
 
 def get_llm() -> Anthropic:
     """Configure and return Claude Haiku LLM for synthesis.
@@ -80,7 +109,7 @@ def get_llm() -> Anthropic:
 
 
 def get_synthesizer():
-    """Configure and return ResponseSynthesizer with system prompt.
+    """Configure and return ResponseSynthesizer with prompt templates.
 
     Returns:
         Configured ResponseSynthesizer for answer generation
@@ -94,10 +123,11 @@ def get_synthesizer():
         synthesizer = get_response_synthesizer(
             response_mode="compact",
             llm=llm,
-            system_prompt=SYSTEM_PROMPT,
+            text_qa_template=TEXT_QA_TEMPLATE,
+            refine_template=REFINE_TEMPLATE,
         )
 
-        logger.info("ResponseSynthesizer configured with system prompt")
+        logger.info("ResponseSynthesizer configured with RedLib prompt templates")
         return synthesizer
 
     except Exception as e:
