@@ -1,12 +1,26 @@
 # RedLib - Architecture
 
 ## Overview
-RedLib ingests a corpus of real jailbreak prompts from public research
-datasets, indexes them in Qdrant Cloud using hybrid dense + sparse
-retrieval, and exposes a FastAPI backend that runs a RAG pipeline:
-hybrid search -> RRF -> Cohere rerank -> Claude Haiku synthesis.
+RedLib has two major systems:
+
+1. A staged local corpus pipeline that turns public jailbreak datasets
+   into a reproducible, normalized, human-reviewed classified corpus.
+2. A query pipeline that indexes that finalized corpus in Qdrant Cloud
+   and serves corpus-grounded retrieval and synthesis through FastAPI.
 
 Frontend assets live under `frontend/` as static HTML/CSS/JS.
+
+---
+
+## Architecture Principles
+
+- Raw source data is preserved exactly as downloaded.
+- Corpus versions are reproducible and locally inspectable.
+- Every corpus stage has exactly one responsibility.
+- Normalization is deterministic and separate from classification.
+- Taxonomy is discovered from the corpus first, then approved by humans
+  before it is applied at scale.
+- Ingestion is the last step, not the place where corpus design happens.
 
 ---
 
@@ -14,32 +28,179 @@ Frontend assets live under `frontend/` as static HTML/CSS/JS.
 
 ```text
 redlib/
-|- app.py              # FastAPI app entry point. All API routes.
-|- rag.py              # Assembles the full LlamaIndex query pipeline.
-|- ingest.py           # Ingestion script. Run manually.
-|- embedder.py         # Configures OpenAI text-embedding-3-small.
-|- retriever.py        # Configures Qdrant hybrid retrieval and Cohere rerank.
-|- router.py           # Builds the corpus-grounded RetrieverQueryEngine.
-|- synthesizer.py      # Configures response synthesis with Claude Haiku 4.5.
-|- data_loader.py      # HuggingFace dataset loaders and record cleaning.
-|- classifier.py       # Assigns one of 10 technique labels during ingestion.
-|- frontend/           # Static frontend assets
-|  |- index.html       # Landing page
-|  |- search.html      # Main search interface
+|- app.py                  # FastAPI app entry point. All API routes.
+|- rag.py                  # Assembles the full LlamaIndex query pipeline.
+|- fetch_corpus.py         # Snapshots public datasets into local corpus storage.
+|- audit_corpus.py         # Analyzes raw corpus quality without modifying it.
+|- normalize_corpus.py     # Deterministically normalizes prompt records.
+|- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
+|- classify_corpus.py      # Applies the approved taxonomy across the corpus.
+|- ingest.py               # Embeds finalized classified corpus into Qdrant.
+|- embedder.py             # Configures OpenAI text-embedding-3-small.
+|- retriever.py            # Configures Qdrant hybrid retrieval and Cohere rerank.
+|- router.py               # Builds the corpus-grounded RetrieverQueryEngine.
+|- synthesizer.py          # Configures response synthesis with Claude Haiku 4.5.
+|- data/
+|  `- corpus/
+|     |- raw/              # Immutable source dataset snapshots
+|     |- audit_report.json # Structured corpus quality report
+|     |- normalized.jsonl  # Deterministically normalized corpus
+|     |- taxonomy_candidates.json
+|     `- classified.jsonl  # Final corpus handed to ingestion
+|- frontend/               # Static frontend assets
+|  |- index.html           # Landing page
+|  |- search.html          # Main search interface
 |  |- css/
 |  |  `- style.css
 |  `- js/
 |     |- config.js
 |     `- app.js
 |- docs/
-|  |- ARCHITECTURE.md  # This file
-|  `- CONTEXT.md       # Synthesis prompt rules and constraints
-|- requirements.txt    # Python dependencies
-|- AGENTS.md           # Coding-agent instructions
-|- DESIGN.md           # Design system and UI guidance
-|- PROGRESS.md         # Session log and project progress
-`- README.md           # Human-facing project description
+|  |- ARCHITECTURE.md      # This file
+|  `- CONTEXT.md           # Synthesis prompt rules and taxonomy philosophy
+|- requirements.txt        # Python dependencies
+|- AGENTS.md               # Coding-agent instructions
+|- DESIGN.md               # Design system and UI guidance
+|- PROGRESS.md             # Historical engineering log
+`- README.md               # Human-facing project description
 ```
+
+---
+
+## Corpus Pipeline
+
+### Stage Sequence
+
+```text
+Public Datasets
+│
+├── fetch_corpus.py
+│      Download and locally snapshot every dataset into a reproducible corpus version.
+│
+▼
+data/corpus/raw/
+│      Exact copies of every source dataset.
+│      No cleaning or modification.
+│
+▼
+audit_corpus.py
+│      Analyze corpus quality.
+│      Detect placeholders, HTML entities, duplicates, malformed prompts,
+│      truncation, encoding issues, and dataset-specific artifacts.
+│      Never modify the data.
+│
+▼
+audit_report.json
+│      Structured quality report used for engineering decisions.
+│
+▼
+normalize_corpus.py
+│      Deterministically normalize prompts into a consistent format.
+│      Decode HTML entities, normalize whitespace,
+│      remove invalid control characters,
+│      standardize formatting,
+│      while preserving semantic meaning.
+│
+▼
+normalized.jsonl
+│      Clean, ingestion-ready corpus.
+│
+▼
+discover_taxonomy.py
+│      Analyze the normalized corpus to discover natural prompt families.
+│      Produce candidate attack taxonomies based on the data itself
+│      rather than predefined labels.
+│
+▼
+taxonomy_candidates.json
+│      Human-reviewed taxonomy proposal.
+│
+▼
+classify_corpus.py
+│      Apply the approved taxonomy consistently across the corpus.
+│
+▼
+classified.jsonl
+│      Final corpus used for embedding.
+│
+▼
+ingest.py
+│      Generate embeddings and write the classified corpus into Qdrant.
+│
+▼
+Qdrant
+```
+
+### Why The Pipeline Is Staged
+
+- `fetch_corpus.py` exists so dataset acquisition is reproducible and
+  separated from every downstream transformation.
+- `audit_corpus.py` exists so quality problems are measured before
+  cleanup rules are chosen, rather than hidden by eager mutation.
+- `normalize_corpus.py` exists so ingestion receives a stable prompt
+  format and corpus cleanup stays deterministic.
+- `discover_taxonomy.py` exists so RedLib's labels emerge from the data
+  instead of being permanently hardcoded up front.
+- Human review exists between discovery and classification so the
+  taxonomy reflects research judgment, not only automated clustering.
+- `classify_corpus.py` exists so taxonomy application is consistent,
+  corpus-wide, and auditable as a separate operation.
+- `ingest.py` exists only to embed and index the finalized corpus, not
+  to make corpus-preparation decisions.
+
+---
+
+## Corpus Artifacts
+
+### `data/corpus/raw/`
+- Immutable local snapshot of every source dataset
+- Source of truth for reproducible corpus versions
+- Never edited in place
+
+### `audit_report.json`
+- Structured report of raw-corpus quality issues
+- Used to drive engineering decisions about normalization and source handling
+- Does not contain cleanup logic
+
+### `normalized.jsonl`
+- Deterministically cleaned prompt records
+- Consistent input format for taxonomy discovery
+- Free of source-specific encoding and formatting noise
+
+### `taxonomy_candidates.json`
+- Candidate prompt-family proposal derived from the normalized corpus
+- Intended for human review before it becomes operational taxonomy
+
+### `classified.jsonl`
+- Final approved corpus with applied taxonomy labels
+- Only corpus artifact consumed by `ingest.py`
+
+---
+
+## Query-Time Architecture
+
+The query path remains corpus-grounded end to end:
+
+```text
+User query (POST /api/query)
+      -> router.py
+Build single RetrieverQueryEngine
+      -> retriever.py
+Dense + sparse retrieval from Qdrant
+      -> QueryFusionRetriever
+Reciprocal rank fusion
+      -> CohereRerank
+Top reranked nodes
+      -> synthesizer.py
+Claude Haiku grounded synthesis
+      -> app.py
+Assemble answer + result cards + technique breakdown
+      ->
+JSON response to frontend
+```
+
+All user queries go through the same retrieval path. There is no direct
+LLM-only conceptual route.
 
 ---
 
@@ -71,7 +232,7 @@ Response:
     }
   ],
   "technique_breakdown": {
-    "Persona Hijacking": 0
+    "Example Category": 0
   },
   "result_count": 0,
   "query_type": "semantic"
@@ -81,13 +242,14 @@ Response:
 Implementation details:
 - `category_filter` is applied as a metadata filter on `technique`
 - `prompt_excerpt` is built from the node body, not from metadata
-- `query_type` is always `"semantic"` because all queries now run through
-  the same corpus-grounded retrieval path
+- `query_type` is always `"semantic"` because all queries use the same
+  corpus-grounded retrieval path
 - full prompt text is intentionally not included in every search result;
   the frontend fetches it separately on demand
 
 ### GET /api/categories
-Returns the technique-category list used by the frontend.
+Returns the approved taxonomy categories and live corpus counts used by
+the frontend filter sidebar.
 
 ### GET /api/prompts/{prompt_id}
 Fetches one full prompt on demand for explicit result inspection.
@@ -105,8 +267,8 @@ Response:
 Implementation details:
 - looks up exactly one Qdrant record by metadata field `prompt_id`
 - relies on a Qdrant keyword payload index on `prompt_id`
-- reconstructs the stored `TextNode` from payload metadata and returns
-  the node body as `full_prompt`
+- reconstructs the stored `TextNode` and returns the node body as
+  `full_prompt`
 - returns `404` if no matching prompt exists
 - returns `500` if the Qdrant lookup fails
 - does not initialize or run the RAG query pipeline
@@ -115,42 +277,9 @@ Implementation details:
 Returns corpus statistics for the frontend stats bar.
 
 Implementation details:
-- `total_prompts` is read live from the Qdrant `redlib` collection via a
-  lightweight `QdrantClient.count(...)` call
-- `total_sources` currently remains static at `4`
-- `last_sync` currently remains a static date string in the API response
-
----
-
-## Data Sources
-
-Current ingestion code loads:
-
-| Loader Function     | Dataset / Configs                                        |
-|---------------------|----------------------------------------------------------|
-| `load_trustairlab`  | `TrustAIRLab/in-the-wild-jailbreak-prompts` (2 configs) |
-| `load_rubend18`     | `rubend18/ChatGPT-Jailbreak-Prompts`                     |
-| `load_jackhhao`     | `jackhhao/jailbreak-classification`                      |
-| `load_harmbench`    | `swiss-ai/harmbench` (`HumanJailbreaks`)                 |
-
-`load_all_datasets()` deduplicates records on the raw `text` field.
-
----
-
-## Technique Categories
-
-Assigned by `classifier.py` during ingestion:
-
-1. Persona Hijacking
-2. Fictional Framing
-3. Authority Impersonation
-4. Token Manipulation
-5. Gradual Escalation
-6. Hypothetical Distancing
-7. Instruction Injection
-8. Social Engineering
-9. Multi-language Switching
-10. Payload Splitting
+- `total_prompts` is read live from the Qdrant `redlib` collection
+- `total_sources` reflects the configured source set
+- `last_sync` is returned as an API field for UI display
 
 ---
 
@@ -167,28 +296,7 @@ Sparse vectors:
 - name: `sparse`
 - index: `SparseIndexParams()`
 
-`ingest.py` creates the collection if it does not exist. `retriever.py`
-and `ingest.py` both connect to the same collection.
-
-Payload indexes:
-- `prompt_id`: `keyword`
-- used by `GET /api/prompts/{prompt_id}` for direct full-prompt lookup
-- created by `ingest.py` for new or existing collections before upsert
-- lazily backfilled by `app.py` if the API encounters an older live
-  collection that predates the payload index
-
----
-
-## Node and Metadata Schema
-
-Each prompt is stored as a `TextNode`.
-
-Prompt text:
-- lives in the `TextNode` body (`TextNode.text`)
-- is the source used for retrieval excerpts
-- remains available for retrieval and synthesis without storing it in metadata
-
-Metadata stored on each node:
+Payload schema:
 ```json
 {
   "source": "string",
@@ -197,86 +305,29 @@ Metadata stored on each node:
 }
 ```
 
-`metadata["text"]` is intentionally not stored. This prevents LlamaIndex
-from duplicating the full prompt in the embedding input when it builds
-the content used for embedding.
+Payload indexes:
+- `prompt_id`: `keyword`
+- used by `GET /api/prompts/{prompt_id}` for direct full-prompt lookup
 
-`prompt_id` is also indexed in Qdrant as a keyword payload field so the
-API can fetch an individual prompt directly without running the full
-retrieval pipeline.
-
-ID format:
-- `generate_id(source, text)` -> `"{source}__{md5_prefix}"`
-- `prompt_id` stored in metadata is the hash suffix after `__`
+Node content:
+- prompt text lives in the `TextNode` body
+- metadata stores only true metadata fields
+- result excerpts and full-prompt lookup both read from node content
 
 ---
 
-## Full Data Flow
+## Taxonomy Surface
 
-### Ingestion
-```text
-HuggingFace datasets
-      -> data_loader.py
-Load + clean + deduplicate records
-      -> ingest.py checkpoint loader
-Resume prior classification progress if ingest_checkpoint.json exists
-      -> classifier.py
-Assign technique label with timeout protection
-      -> ingest.py checkpoint saver
-Persist classified progress during long runs
-      -> embedder.py
-Configure OpenAI text-embedding-3-small
-      -> ingest.py
-Create TextNode objects with prompt text in the node body
-      -> LlamaIndex embed path
-Embed node content
-      -> Qdrant
-Insert dense + sparse vectors with metadata into collection redlib
-```
+RedLib's taxonomy is not intended to be a permanently predefined label
+set. The operational category list comes from:
 
-### Query Time
-```text
-User query (POST /api/query)
-      -> router.py (RetrieverQueryEngine builder)
-      -> QueryFusionRetriever
-      -> Dense search + sparse search in Qdrant
-      -> RRF
-      -> Merged ranked list
-      -> CohereRerank
-      -> Top reranked nodes
-      -> synthesizer.py
-      -> Claude Haiku synthesized answer
-      -> app.py
-Assemble response: answer + result cards + technique breakdown
-      ->
-JSON response to frontend
+1. corpus normalization
+2. taxonomy discovery
+3. human review
+4. corpus-wide classification
 
-User clicks "View Full Prompt"
-      -> GET /api/prompts/{prompt_id} in app.py
-      -> Qdrant scroll with payload filter on metadata.prompt_id
-      -> reconstruct TextNode from stored payload
-      -> return full prompt + source + technique
-      ->
-JSON response to modal
-```
-
----
-
-## Ingestion Safeguards
-
-Current `ingest.py` includes:
-
-- Checkpoint resume via `ingest_checkpoint.json`
-- Classification timeout protection via `classify_with_timeout()`
-- Token counting using `tiktoken` for the embedding model
-- Logging of both raw prompt token count and exact embedded-content token count
-- Oversized prompt skip guard based on the exact content that will be embedded
-- Batch insertion logging around `index.insert_nodes(nodes)`
-
-Checkpoint behavior:
-- stores classified records plus the last processed index
-- allows long ingestion runs to resume after interruption
-- removes the checkpoint file after a successful full run
+At query time, the frontend filters, retrieval metadata, and synthesis
+all operate on that approved taxonomy output.
 
 ---
 
@@ -296,17 +347,15 @@ Checkpoint behavior:
 
 ## Environment Variables
 
-Actual variables used by the current code:
-
-| Variable            | Used By                         | Purpose                    |
-|---------------------|---------------------------------|----------------------------|
-| `QDRANT_URL`        | `app.py`, `retriever.py`, `ingest.py`     | Qdrant Cloud endpoint      |
-| `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py`     | Qdrant Cloud authentication|
-| `OPENAI_API_KEY`    | `embedder.py`                   | Embeddings                 |
-| `ANTHROPIC_API_KEY` | `classifier.py`, `synthesizer.py` | Claude Haiku 4.5        |
-| `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API          |
-| `HUGGINGFACE_TOKEN` | `data_loader.py`                | HuggingFace dataset access |
-| `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection          |
+| Variable            | Used By                         | Purpose                         |
+|---------------------|---------------------------------|---------------------------------|
+| `QDRANT_URL`        | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud endpoint     |
+| `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud authentication |
+| `OPENAI_API_KEY`    | `embedder.py`, `ingest.py`      | Embeddings                      |
+| `ANTHROPIC_API_KEY` | `synthesizer.py`                | Claude Haiku 4.5 synthesis      |
+| `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API               |
+| `HUGGINGFACE_TOKEN` | `fetch_corpus.py`               | Dataset snapshot access         |
+| `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection               |
 
 ---
 
@@ -324,12 +373,11 @@ pip install -r requirements.txt
 doppler login
 doppler setup
 
-doppler run -- python ingest.py
 doppler run -- uvicorn app:app --reload --port 8000
 ```
 
-Frontend assets can be opened directly from `frontend/` or served with any
-static file server during local development.
+Frontend assets can be opened directly from `frontend/` or served with
+any static file server during local development.
 
 ---
 
@@ -345,6 +393,10 @@ Deployment is split:
 
 ## Constraints
 
-- Changing the embedding model invalidates stored vectors and requires re-ingestion.
+- Changing the embedding model invalidates stored vectors and requires
+  re-ingestion.
+- Raw corpus snapshots are immutable once captured.
+- Normalization must preserve semantic meaning while remaining deterministic.
+- Taxonomy discovery and taxonomy application must stay separate stages.
+- Ingestion consumes only finalized classified corpus artifacts.
 - Prompt text is stored in the `TextNode` body, not in metadata.
-- Oversize protection is based on the exact content sent to the embedding model.

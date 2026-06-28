@@ -110,7 +110,7 @@ general knowledge alone.
 
 For conceptual questions, the prompt still instructs the model to:
 - Define terms using standard AI safety terminology
-- Use the 10 RedLib technique categories where applicable
+- Use the approved RedLib taxonomy where applicable
 - Keep answers under 100 words
 
 In practice, those answers are now grounded in the retrieved RedLib
@@ -141,19 +141,23 @@ an answer to fill the gap.
 
 ---
 
-## Technique Categories
-These are the active RedLib technique categories referenced by the
-current prompt and classifier:
+## Taxonomy Philosophy
+RedLib does not treat its taxonomy as a permanently predefined label
+set.
 
-| Technique                | Definition                                               |
-|--------------------------|----------------------------------------------------------|
-| Persona Hijacking        | Instructing the model to adopt an alter ego that operates outside safety constraints |
-| Fictional Framing        | Embedding harmful requests inside stories, roleplay, or hypothetical scenarios |
-| Authority Impersonation  | Claiming developer, admin, or system-level permissions   |
-| Token Manipulation       | Encoding, obfuscating, or splitting tokens to evade safety filters |
-| Gradual Escalation       | Multi-turn softening before introducing the harmful ask  |
-| Hypothetical Distancing  | Using thought experiments or "what if" framing           |
-| Instruction Injection    | Overriding or appending to system instructions           |
-| Social Engineering       | Using flattery, urgency, guilt, or emotional manipulation |
-| Multi-language Switching | Switching languages mid-prompt to bypass filters         |
-| Payload Splitting        | Breaking harmful content across multiple turns or chunks |
+The intended taxonomy workflow is:
+
+1. discover natural prompt families from the normalized corpus
+2. review and refine those candidate categories with human judgment
+3. apply the approved taxonomy consistently across the full corpus
+
+This matters for synthesis because the answer layer should reflect the
+approved corpus taxonomy, not invent ad hoc labels and not assume a
+fixed category scheme that bypasses corpus review.
+
+When the synthesizer names categories, it should:
+- use the approved taxonomy labels surfaced by the classified corpus
+- stay consistent with retrieval metadata and frontend filters
+- avoid inventing unsupported category names
+- fall back to describing patterns directly if the retrieved results do
+  not support a strong taxonomy-level claim

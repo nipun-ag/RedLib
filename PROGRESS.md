@@ -1,6 +1,59 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Redesigned the documented corpus architecture around a staged local
+pipeline.
+
+Issue:
+- The project documentation still described corpus preparation as a
+  direct dataset-loading flow that moved too quickly from public dataset
+  access into classification and ingestion.
+- That design blurred several distinct engineering concerns:
+  reproducible source snapshotting, corpus quality analysis,
+  deterministic normalization, taxonomy design, taxonomy application,
+  and final vector ingestion.
+
+Decision:
+- RedLib's documentation was intentionally redesigned to treat corpus
+  building as a staged local pipeline:
+  `fetch_corpus.py -> audit_corpus.py -> normalize_corpus.py ->
+  discover_taxonomy.py -> classify_corpus.py -> ingest.py`.
+- The new source of truth is a versioned local corpus under
+  `data/corpus/`, where raw source data remains untouched and every
+  downstream artifact has a single clear purpose.
+
+Why this redesign was needed:
+- Reproducibility: local raw snapshots make corpus versions auditable
+  and repeatable.
+- Data quality: auditing raw inputs before cleanup makes quality issues
+  visible instead of silently absorbing them into ingestion.
+- Determinism: normalization becomes a stable transformation rather than
+  an ad hoc side effect of loading code.
+- Taxonomy quality: prompt families should be discovered from the corpus
+  first, then reviewed by humans before classification is applied across
+  the dataset.
+- Separation of concerns: ingestion should embed finalized classified
+  artifacts, not serve as the place where corpus preparation decisions
+  are made.
+
+Documentation changes:
+- Rewrote `docs/ARCHITECTURE.md` so the staged corpus pipeline is now
+  the current architecture reference.
+- Updated `README.md` to explain the high-level corpus workflow without
+  implementation detail.
+- Updated `AGENTS.md` so contributor guidance now treats each future
+  corpus-stage script as a single-responsibility component.
+- Updated `docs/CONTEXT.md` to replace fixed-taxonomy language with the
+  new taxonomy philosophy: discovery, human review, then corpus-wide
+  classification.
+
+Result:
+- Current-facing docs now describe only the staged corpus pipeline.
+- The earlier direct-ingestion architecture is preserved here in
+  `PROGRESS.md` as project history rather than in living documentation.
+
+---
+## 2026-06-28
 Increased result-card prompt excerpts from ~300 to ~500 characters.
 
 Issue:

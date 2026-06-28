@@ -1,11 +1,11 @@
 # RedLib - AGENTS.md
 
 ## What This Is
-RedLib is a production-grade RAG tool that lets AI safety practitioners
-and red teamers search a curated corpus of real jailbreak prompts using
-natural language queries. It uses LlamaIndex for the retrieval pipeline,
-Qdrant Cloud for vector storage, and Claude Haiku 4.5 for answer
-synthesis.
+RedLib is a production-grade RAG tool for AI safety practitioners and
+red teamers searching a curated corpus of real jailbreak prompts. It
+uses a staged local corpus pipeline to produce a reproducible classified
+dataset, then indexes that finalized corpus in Qdrant Cloud for
+retrieval and synthesis.
 
 ## Tech Stack
 - Frontend: Vanilla JS, HTML, CSS (Tailwind via CDN, no build step)
@@ -38,22 +38,32 @@ Local dev:
 ## File Structure
 ```text
 redlib/
-|- app.py              # FastAPI app, all API routes
-|- rag.py              # LlamaIndex query pipeline (entry point)
-|- ingest.py           # Ingestion pipeline (run manually)
-|- embedder.py         # OpenAI embedding model configuration
-|- retriever.py        # Qdrant hybrid retrieval + RRF + Cohere rerank
-|- router.py           # Corpus-grounded query engine assembly
-|- synthesizer.py      # LlamaIndex ResponseSynthesizer + Haiku config
-|- data_loader.py      # HuggingFace dataset loaders + cleaning
-|- classifier.py       # Claude Haiku technique label classifier
-|- frontend/           # Static frontend assets
-|  |- index.html       # Landing page with disclaimer gate
-|  |- search.html      # Main search interface
+|- app.py                # FastAPI app, all API routes
+|- rag.py                # LlamaIndex query pipeline (entry point)
+|- fetch_corpus.py       # Snapshot public datasets into versioned local raw corpus storage
+|- audit_corpus.py       # Analyze raw corpus quality without modifying source data
+|- normalize_corpus.py   # Deterministically normalize prompts into a stable corpus format
+|- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
+|- classify_corpus.py    # Apply the approved taxonomy across the finalized corpus
+|- ingest.py             # Embed the classified corpus into Qdrant
+|- embedder.py           # OpenAI embedding model configuration
+|- retriever.py          # Qdrant hybrid retrieval + RRF + Cohere rerank
+|- router.py             # Corpus-grounded query engine assembly
+|- synthesizer.py        # LlamaIndex ResponseSynthesizer + Haiku config
+|- data/
+|  `- corpus/
+|     |- raw/            # Immutable dataset snapshots by corpus version
+|     |- audit_report.json
+|     |- normalized.jsonl
+|     |- taxonomy_candidates.json
+|     `- classified.jsonl
+|- frontend/             # Static frontend assets
+|  |- index.html         # Landing page with disclaimer gate
+|  |- search.html        # Main search interface
 |  |- css/
 |  |  `- style.css
 |  `- js/
-|     |- config.js     # API base URL configuration
+|     |- config.js       # API base URL configuration
 |     `- app.js
 |- docs/
 |  |- ARCHITECTURE.md
@@ -88,19 +98,30 @@ Read before touching any retrieval file:
 5. `synthesizer.py` passes top nodes + query to Claude Haiku
 6. `app.py` assembles and returns the response object
 
-Current ingestion pipeline:
-1. `data_loader.py` loads and deduplicates dataset records
-2. `ingest.py` resumes from `ingest_checkpoint.json` when present
-3. `classifier.py` labels prompts via `classify_with_timeout()`
-4. `ingest.py` saves checkpoint progress during classification
-5. `embedder.py` configures `text-embedding-3-small`
-6. `ingest.py` ensures the Qdrant collection exists
-7. `ingest.py` stores prompt text in the `TextNode` body
-8. `ingest.py` stores only `source`, `technique`, and `prompt_id` in metadata
-9. `ingest.py` logs token counts for raw prompt text and embedded node content
-10. `ingest.py` skips genuinely oversized prompts with a token-based guard
-11. `ingest.py` inserts nodes into Qdrant in batches
-12. `ingest.py` removes the checkpoint after a successful full run
+Current corpus pipeline:
+1. `fetch_corpus.py` snapshots public datasets into `data/corpus/raw/`
+2. `audit_corpus.py` detects quality issues without changing the raw corpus
+3. `normalize_corpus.py` produces deterministic normalized prompt records
+4. `discover_taxonomy.py` proposes natural prompt families from the corpus itself
+5. Human review approves the taxonomy proposal
+6. `classify_corpus.py` applies the approved taxonomy across the corpus
+7. `ingest.py` embeds only the finalized `classified.jsonl` corpus into Qdrant
+
+Each corpus-stage script has exactly one responsibility:
+- `fetch_corpus.py`: acquisition and versioned local snapshotting only
+- `audit_corpus.py`: quality analysis only
+- `normalize_corpus.py`: deterministic normalization only
+- `discover_taxonomy.py`: taxonomy discovery only
+- `classify_corpus.py`: taxonomy application only
+- `ingest.py`: embedding and Qdrant writes only
+
+## Corpus Principles
+- Raw datasets remain untouched after snapshotting
+- Every corpus version should be reproducible
+- Normalization must be deterministic
+- Taxonomy should be discovered from the corpus before it is applied
+- Human review sits between taxonomy discovery and corpus-wide classification
+- Ingestion consumes only finalized classified corpus artifacts
 
 ## Before Starting Any Task
 - Task touches retrieval or pipeline -> read `ARCHITECTURE.md` first
@@ -113,14 +134,22 @@ Current ingestion pipeline:
 - Change the embedding model (invalidates stored vectors)
 - Run `ingest.py` against production without a backup plan
 - Add new pip dependencies without updating `requirements.txt`
+- Modify raw corpus snapshots in `data/corpus/raw/`
 
 ## Common Task Patterns
 
 ### Adding a new dataset source
-1. Add loader + cleaning function to `data_loader.py`
-2. Add `classifier.py` pass to assign technique labels
-3. Run `ingest.py` to embed and upsert new records to Qdrant
-4. Update corpus stats and source list in `ARCHITECTURE.md`
+1. Extend `fetch_corpus.py` to snapshot the new source into raw corpus storage
+2. Re-run corpus audit and normalization
+3. Re-run taxonomy discovery and classification if the new source changes the corpus mix
+4. Re-run `ingest.py` after the finalized classified corpus is ready
+5. Update corpus notes in `ARCHITECTURE.md`
+
+### Changing corpus preparation behavior
+1. Read `ARCHITECTURE.md` corpus section first
+2. Keep the change isolated to the responsible stage script
+3. Preserve the one-responsibility rule for each stage
+4. Document the change in `PROGRESS.md`
 
 ### Changing retrieval behavior
 1. Read `ARCHITECTURE.md` retrieval section first
@@ -133,15 +162,16 @@ Current ingestion pipeline:
 2. Put business logic in its own module, never in `app.py`
 3. Add request/response schema to `ARCHITECTURE.md`
 
-### Debugging bad ingestion results
-1. Inspect checkpoint resume behavior in `ingest.py`
-2. Inspect token-count logs and oversized-prompt warnings
-3. Check Qdrant collection setup and batch-insert logs
+### Debugging corpus quality issues
+1. Inspect the affected raw snapshot in `data/corpus/raw/`
+2. Check `audit_report.json` for corpus-wide patterns
+3. Inspect `normalize_corpus.py` for deterministic cleanup rules
+4. Confirm whether the issue belongs to normalization, taxonomy, or ingestion
 
 ### Debugging bad retrieval results
 1. Inspect Cohere rerank scores in logs
 2. Check whether query routing is correct
-3. Inspect Qdrant filters, source nodes, and ingestion logs
+3. Inspect Qdrant filters, source nodes, and classified corpus assumptions
 
 ## Git Commit Format
 - feat: new feature
@@ -177,8 +207,10 @@ Phase 1 - In Development
   there is no direct conceptual LLM-only route
 - Full prompt inspection is lazy-loaded through a dedicated backend
   endpoint; search results stay excerpt-based
-- Ingestion is implemented with checkpoint resume support, timeout-wrapped
-  classification, token counting, and oversized-prompt skipping safeguards
+- Corpus architecture is organized around a staged local workflow:
+  fetch, audit, normalize, discover taxonomy, classify, ingest
+- Ingestion is defined as the final embedding step that consumes only
+  classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only
   `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`

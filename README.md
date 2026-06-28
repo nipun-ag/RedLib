@@ -1,35 +1,61 @@
 # RedLib
 
-RedLib is a retrieval-augmented search tool for AI safety researchers
-and red teamers working with real jailbreak prompts. It ingests a
-curated corpus from public research datasets, stores hybrid vectors in
-Qdrant Cloud, and exposes a FastAPI backend for natural-language search
-and synthesis.
+RedLib is a retrieval-augmented research tool for AI safety
+practitioners and red teamers working with real jailbreak prompts. It
+combines a versioned local corpus pipeline with Qdrant-backed retrieval
+so contributors can search, inspect, and synthesize patterns across a
+curated prompt corpus.
 
 ---
 
 ## Why It Exists
 
-Useful jailbreak examples are spread across multiple datasets and are
-hard to compare in one place. RedLib brings those sources together so
-contributors can inspect attack patterns, filter by technique, and query
-the corpus with plain language instead of manually searching raw files.
+Useful jailbreak prompts are scattered across public datasets and often
+arrive with inconsistent formatting, duplicate records, and weak
+taxonomy. RedLib exists to turn that messy source material into a
+reproducible research corpus that can be audited, classified, embedded,
+and queried reliably.
 
 ---
 
 ## How It Works
 
-At a high level, RedLib has two parts:
+RedLib has two high-level systems:
 
-- A one-time ingestion pipeline that loads public datasets, deduplicates
-  prompt text, classifies each prompt into one of ten technique labels,
-  embeds the prompts, and stores them in Qdrant.
-- A query pipeline that runs hybrid retrieval, reranks the results, and
-  produces a short synthesized answer grounded in the retrieved prompts.
+- A staged corpus pipeline that snapshots public datasets locally,
+  audits quality, normalizes prompts deterministically, discovers a
+  taxonomy from the corpus itself, applies a human-approved taxonomy
+  consistently, and only then hands the finalized corpus to ingestion.
+- A query pipeline that retrieves relevant prompts from Qdrant, reranks
+  them, and produces a short grounded synthesis for the user.
 
 The frontend lives in `frontend/` as static HTML, CSS, and JavaScript.
 The backend API lives in `app.py`. Detailed implementation notes belong
 in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
+
+---
+
+## Corpus Workflow
+
+At a high level, the corpus pipeline is:
+
+1. `fetch_corpus.py` snapshots public datasets into a local corpus
+   version under `data/corpus/raw/`.
+2. `audit_corpus.py` evaluates raw corpus quality without modifying the
+   source data.
+3. `normalize_corpus.py` produces a deterministic, ingestion-ready
+   normalized corpus.
+4. `discover_taxonomy.py` derives candidate prompt families from the
+   normalized data.
+5. Human review approves the taxonomy proposal.
+6. `classify_corpus.py` applies the approved taxonomy across the full
+   corpus.
+7. `ingest.py` embeds only the finalized classified corpus and writes it
+   to Qdrant.
+
+This design keeps raw source data untouched, makes corpus versions
+reproducible, and separates data cleaning, taxonomy design, and vector
+ingestion into distinct responsibilities.
 
 ---
 
@@ -44,18 +70,7 @@ in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
 | Embeddings    | OpenAI `text-embedding-3-small`    |
 | Reranking     | Cohere Rerank API                  |
 | Synthesis     | Anthropic Claude Haiku 4.5         |
-| Data Sources  | Hugging Face datasets              |
-
----
-
-## Data Sources
-
-The current ingestion pipeline loads prompts from:
-
-- `TrustAIRLab/in-the-wild-jailbreak-prompts`
-- `rubend18/ChatGPT-Jailbreak-Prompts`
-- `jackhhao/jailbreak-classification`
-- `swiss-ai/harmbench` (`HumanJailbreaks`)
+| Corpus Input  | Public datasets, locally snapshotted |
 
 ---
 
@@ -68,7 +83,7 @@ cd redlib
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-pip install -r requirements.txt fastapi uvicorn pydantic
+pip install -r requirements.txt
 ```
 
 RedLib expects the environment variables listed in
@@ -83,32 +98,12 @@ COHERE_API_KEY
 HUGGINGFACE_TOKEN
 ```
 
-The project is intended to be run with Doppler-managed secrets:
+The project is intended to run with Doppler-managed secrets:
 
 ```bash
 doppler login
 doppler setup
 ```
-
----
-
-## Ingest The Corpus
-
-Run ingestion after your environment variables are available:
-
-```bash
-doppler run -- python ingest.py
-```
-
-The current ingestion flow:
-
-- loads and deduplicates dataset records
-- classifies each prompt into a technique category
-- resumes from `ingest_checkpoint.json` if a prior run was interrupted
-- embeds prompt content and inserts it into the `redlib` Qdrant collection
-- skips prompts that exceed the embedding token budget
-
-You only need to re-run ingestion when the corpus or vector schema changes.
 
 ---
 
@@ -138,7 +133,12 @@ for API requests.
 
 ## Repository Guide
 
-- `ingest.py`: dataset loading, classification, embedding, and Qdrant insertion
+- `fetch_corpus.py`: snapshot public datasets into versioned local raw corpus storage
+- `audit_corpus.py`: analyze raw corpus quality without modifying source data
+- `normalize_corpus.py`: deterministically normalize prompts into a stable corpus format
+- `discover_taxonomy.py`: derive candidate attack families from the normalized corpus
+- `classify_corpus.py`: apply the approved taxonomy across the corpus
+- `ingest.py`: embed the finalized classified corpus into Qdrant
 - `app.py`: FastAPI routes
 - `rag.py`: query-pipeline assembly
 - `retriever.py`: hybrid retrieval and reranking
