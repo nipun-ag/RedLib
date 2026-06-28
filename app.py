@@ -14,8 +14,12 @@ from llama_index.core.vector_stores import (
     FilterOperator,
 )
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Filter as QdrantFilter
-from qdrant_client.http.models import FieldCondition, MatchValue
+from qdrant_client.http.models import (
+    Filter as QdrantFilter,
+    FieldCondition,
+    MatchValue,
+    PayloadSchemaType,
+)
 from rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
@@ -93,6 +97,17 @@ def get_qdrant_client() -> QdrantClient:
 def get_prompt_by_id(prompt_id: str) -> PromptResponse:
     """Fetch a single prompt by metadata prompt_id directly from Qdrant."""
     client = get_qdrant_client()
+    collection_info = client.get_collection(QDRANT_COLLECTION_NAME)
+    payload_schema = collection_info.payload_schema or {}
+
+    if "prompt_id" not in payload_schema:
+        logger.info("Creating missing Qdrant keyword payload index for prompt_id")
+        client.create_payload_index(
+            collection_name=QDRANT_COLLECTION_NAME,
+            field_name="prompt_id",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+
     records, _ = client.scroll(
         collection_name=QDRANT_COLLECTION_NAME,
         scroll_filter=QdrantFilter(

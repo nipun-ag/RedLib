@@ -7,6 +7,7 @@ from typing import Any
 import tiktoken
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams
+from qdrant_client.http.models import PayloadSchemaType
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.schema import MetadataMode, TextNode
@@ -75,6 +76,26 @@ def generate_id(source: str, text: str) -> str:
 def count_tokens(text: str) -> int:
     """Count tokens for the embedding model tokenizer."""
     return len(EMBED_ENCODING.encode(text))
+
+
+def ensure_prompt_id_payload_index(
+    client: QdrantClient,
+    collection_name: str,
+) -> None:
+    """Ensure prompt_id is indexed for direct Qdrant payload filtering."""
+    collection_info = client.get_collection(collection_name)
+    payload_schema = collection_info.payload_schema or {}
+
+    if "prompt_id" in payload_schema:
+        logger.info("Qdrant payload index already exists for prompt_id")
+        return
+
+    client.create_payload_index(
+        collection_name=collection_name,
+        field_name="prompt_id",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
+    logger.info("Created Qdrant keyword payload index for prompt_id")
 
 
 def save_checkpoint(classified_records: list[dict], last_index: int) -> None:
@@ -191,8 +212,12 @@ def run_ingestion() -> None:
         else:
             logger.info(f"Collection {collection_name} already exists")
 
-        # Step 7: Build vector store and index
-        logger.info("Step 7: Building vector store...")
+        # Step 7: Ensure prompt_id payload index exists
+        logger.info("Step 7: Ensuring prompt_id payload index exists...")
+        ensure_prompt_id_payload_index(client, collection_name)
+
+        # Step 8: Build vector store and index
+        logger.info("Step 8: Building vector store...")
         vector_store = QdrantVectorStore(
             client=client,
             collection_name=collection_name,
@@ -203,8 +228,8 @@ def run_ingestion() -> None:
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents([], storage_context=storage_context)
 
-        # Step 8: Build nodes and upsert
-        logger.info("Step 8: Upserting nodes to Qdrant...")
+        # Step 9: Build nodes and upsert
+        logger.info("Step 9: Upserting nodes to Qdrant...")
         nodes = []
 
         for record in records:

@@ -104,6 +104,7 @@ Response:
 
 Implementation details:
 - looks up exactly one Qdrant record by metadata field `prompt_id`
+- relies on a Qdrant keyword payload index on `prompt_id`
 - reconstructs the stored `TextNode` from payload metadata and returns
   the node body as `full_prompt`
 - returns `404` if no matching prompt exists
@@ -169,6 +170,13 @@ Sparse vectors:
 `ingest.py` creates the collection if it does not exist. `retriever.py`
 and `ingest.py` both connect to the same collection.
 
+Payload indexes:
+- `prompt_id`: `keyword`
+- used by `GET /api/prompts/{prompt_id}` for direct full-prompt lookup
+- created by `ingest.py` for new or existing collections before upsert
+- lazily backfilled by `app.py` if the API encounters an older live
+  collection that predates the payload index
+
 ---
 
 ## Node and Metadata Schema
@@ -192,6 +200,10 @@ Metadata stored on each node:
 `metadata["text"]` is intentionally not stored. This prevents LlamaIndex
 from duplicating the full prompt in the embedding input when it builds
 the content used for embedding.
+
+`prompt_id` is also indexed in Qdrant as a keyword payload field so the
+API can fetch an individual prompt directly without running the full
+retrieval pipeline.
 
 ID format:
 - `generate_id(source, text)` -> `"{source}__{md5_prefix}"`

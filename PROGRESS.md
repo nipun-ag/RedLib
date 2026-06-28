@@ -320,3 +320,44 @@ Result:
   while PROGRESS.md preserves how the project got there.
 
 ---
+## 2026-06-28
+Added a Qdrant payload index for `prompt_id` so full-prompt lookup works
+against both new and already-populated collections.
+
+Issue:
+- `GET /api/prompts/{prompt_id}` was implemented as a direct Qdrant
+  payload filter on the metadata field `prompt_id`.
+- Qdrant rejected that lookup on the live `redlib` collection with:
+  `Index required but not found for "prompt_id" of type [keyword]`.
+- The endpoint design was correct, but the collection needed an
+  explicit keyword payload index before that metadata field could be
+  used reliably for filtered lookup.
+
+Change:
+- Updated `ingest.py` to ensure a Qdrant keyword payload index exists on
+  `prompt_id` after the collection is created or reused, before any
+  upsert work begins.
+- Added a lightweight safeguard in `app.py` so the API checks for the
+  `prompt_id` payload index and creates it lazily if the backend is
+  pointed at an older live collection that predates the ingestion-side
+  fix.
+- Updated `docs/ARCHITECTURE.md` to document `prompt_id` as an indexed
+  payload field used by `GET /api/prompts/{prompt_id}`.
+
+Why this was needed:
+- This fixes the actual Qdrant requirement instead of forcing a full
+  re-ingestion or redesigning prompt lookup around a different ID path.
+- Creating the payload index is safe for an existing collection and
+  keeps the current node schema intact: prompt text still lives in the
+  `TextNode` body, metadata still stores only `source`, `technique`, and
+  `prompt_id`, and the retrieval pipeline remains unchanged.
+
+Result:
+- New collections created through `ingest.py` now provision the payload
+  index automatically.
+- Existing live collections can be upgraded in place by the backend on
+  first prompt lookup.
+- The full-prompt endpoint no longer depends on re-ingestion just to
+  make metadata filtering work.
+
+---
