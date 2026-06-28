@@ -1,6 +1,50 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Added lazy full-prompt fetching for explicit source inspection.
+
+Issue:
+- Search results only returned `prompt_excerpt`, which kept responses
+  lightweight and safe, but the frontend still labeled the card action
+  as `Detailed Report` and only showed the same truncated excerpt in the
+  modal.
+- That made result inspection misleading: users could not explicitly
+  inspect the full retrieved prompt without bloating every search
+  response or weakening the distinction between grounded AI summary and
+  raw source material.
+
+Change:
+- Added `GET /api/prompts/{prompt_id}` in `app.py`.
+- Implemented the endpoint as a direct Qdrant lookup that filters on the
+  stored metadata field `prompt_id`, scrolls for exactly one record,
+  reconstructs the stored `TextNode` from `_node_content`, and returns:
+  `id`, `full_prompt`, `technique`, and `source`.
+- Kept `POST /api/query` excerpt-based. Search responses still return
+  only `prompt_excerpt` for result cards.
+- Updated the frontend result-card action from `Detailed Report` to
+  `View Full Prompt`, opened the modal immediately on click, showed a
+  loading state while fetching, and rendered either the full prompt or a
+  clear inline error message.
+- Updated `docs/ARCHITECTURE.md` and `DESIGN.md` to document the new
+  endpoint and the lazy inspection interaction.
+
+Why this was needed:
+- Lazy fetching is the right balance for RedLib. It preserves fast,
+  scan-friendly result lists and avoids sending raw full prompts in
+  every search response, while still allowing explicit source inspection
+  after the responsible-use gate.
+- It also keeps the AI summary constraints intact: synthesis still does
+  not reproduce full prompts. Full prompt viewing is a separate,
+  user-initiated inspection path.
+
+Result:
+- Search remains excerpt-based and lightweight.
+- Full prompts are now available on demand through a dedicated backend
+  endpoint and a correctly labeled frontend modal.
+
+---
+
+## 2026-06-28
 Removed the direct conceptual query route so all answers are grounded in
 the RedLib corpus.
 

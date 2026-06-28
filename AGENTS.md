@@ -175,6 +175,8 @@ Phase 1 - In Development
 - Backend query pipeline is implemented
 - All user queries are corpus-grounded through the same retrieval path;
   there is no direct conceptual LLM-only route
+- Full prompt inspection is lazy-loaded through a dedicated backend
+  endpoint; search results stay excerpt-based
 - Ingestion is implemented with checkpoint resume support, timeout-wrapped
   classification, token counting, and oversized-prompt skipping safeguards
 - Prompt text lives in the `TextNode` body; metadata stores only

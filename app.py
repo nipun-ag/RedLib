@@ -7,12 +7,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from llama_index.core.schema import MetadataMode
+from llama_index.core.vector_stores.utils import metadata_dict_to_node
 from llama_index.core.vector_stores import (
     MetadataFilters,
     MetadataFilter,
     FilterOperator,
 )
 from qdrant_client import QdrantClient
+from qdrant_client.http.models import Filter as QdrantFilter
+from qdrant_client.http.models import FieldCondition, MatchValue
 from rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
@@ -58,6 +61,13 @@ class StatsResponse(BaseModel):
     last_sync: str
 
 
+class PromptResponse(BaseModel):
+    id: str
+    full_prompt: str
+    technique: str
+    source: str
+
+
 def get_qdrant_client() -> QdrantClient:
     """Configure and return a Qdrant client for lightweight app queries."""
     qdrant_url = os.environ.get("QDRANT_URL")
@@ -77,6 +87,38 @@ def get_qdrant_client() -> QdrantClient:
         url=qdrant_url,
         api_key=qdrant_api_key,
         timeout=120,
+    )
+
+
+def get_prompt_by_id(prompt_id: str) -> PromptResponse:
+    """Fetch a single prompt by metadata prompt_id directly from Qdrant."""
+    client = get_qdrant_client()
+    records, _ = client.scroll(
+        collection_name=QDRANT_COLLECTION_NAME,
+        scroll_filter=QdrantFilter(
+            must=[
+                FieldCondition(
+                    key="prompt_id",
+                    match=MatchValue(value=prompt_id),
+                )
+            ]
+        ),
+        limit=1,
+        with_payload=True,
+        with_vectors=False,
+    )
+
+    if not records:
+        raise KeyError(prompt_id)
+
+    payload = records[0].payload or {}
+    node = metadata_dict_to_node(payload)
+
+    return PromptResponse(
+        id=payload.get("prompt_id", prompt_id),
+        full_prompt=node.get_content(metadata_mode=MetadataMode.NONE),
+        technique=payload.get("technique", "Unknown"),
+        source=payload.get("source", ""),
     )
 
 
@@ -234,6 +276,25 @@ async def get_categories() -> CategoriesResponse:
         {"name": "Payload Splitting", "count": 0, "icon": "call_split"},
     ]
     return CategoriesResponse(categories=categories)
+
+
+@app.get("/api/prompts/{prompt_id}")
+async def get_prompt(prompt_id: str) -> PromptResponse:
+    """Fetch a single full prompt on demand without running the RAG pipeline."""
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: get_prompt_by_id(prompt_id))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    except Exception as e:
+        logger.error(
+            f"Failed to load prompt {prompt_id} from Qdrant: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load prompt from Qdrant",
+        )
 
 
 @app.get("/api/stats")

@@ -491,7 +491,7 @@ body {
   margin-left: 8px;
 }
 
-.detailed-report-link {
+.result-action-link {
   color: var(--primary);
   font-weight: 700;
   cursor: pointer;
@@ -502,7 +502,7 @@ body {
   transition: opacity 75ms ease;
 }
 
-.detailed-report-link:hover {
+.result-action-link:hover {
   opacity: 0.8;
 }
 
@@ -582,6 +582,10 @@ body {
   margin-bottom: 24px;
 }
 
+.modal-label {
+  margin-bottom: 12px;
+}
+
 .modal-prompt-id {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
@@ -604,6 +608,16 @@ body {
   margin-bottom: 16px;
   word-wrap: break-word;
   white-space: pre-wrap;
+}
+
+.modal-text.is-loading {
+  color: var(--on-surface-variant);
+  opacity: 0.8;
+}
+
+.modal-text.is-error {
+  color: var(--on-surface);
+  border-color: var(--primary);
 }
 
 .modal-source {

@@ -83,9 +83,32 @@ Implementation details:
 - `prompt_excerpt` is built from the node body, not from metadata
 - `query_type` is always `"semantic"` because all queries now run through
   the same corpus-grounded retrieval path
+- full prompt text is intentionally not included in every search result;
+  the frontend fetches it separately on demand
 
 ### GET /api/categories
 Returns the technique-category list used by the frontend.
+
+### GET /api/prompts/{prompt_id}
+Fetches one full prompt on demand for explicit result inspection.
+
+Response:
+```json
+{
+  "id": "string",
+  "full_prompt": "string",
+  "technique": "string",
+  "source": "string"
+}
+```
+
+Implementation details:
+- looks up exactly one Qdrant record by metadata field `prompt_id`
+- reconstructs the stored `TextNode` from payload metadata and returns
+  the node body as `full_prompt`
+- returns `404` if no matching prompt exists
+- returns `500` if the Qdrant lookup fails
+- does not initialize or run the RAG query pipeline
 
 ### GET /api/stats
 Returns corpus statistics for the frontend stats bar.
@@ -215,6 +238,14 @@ User query (POST /api/query)
 Assemble response: answer + result cards + technique breakdown
       ->
 JSON response to frontend
+
+User clicks "View Full Prompt"
+      -> GET /api/prompts/{prompt_id} in app.py
+      -> Qdrant scroll with payload filter on metadata.prompt_id
+      -> reconstruct TextNode from stored payload
+      -> return full prompt + source + technique
+      ->
+JSON response to modal
 ```
 
 ---
