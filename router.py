@@ -1,7 +1,7 @@
 import logging
 from typing import Any, List
 from llama_index.core.query_engine import RetrieverQueryEngine, RouterQueryEngine
-from llama_index.core.tools import QueryEngineTool
+from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.core.selectors import LLMSingleSelector
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,14 @@ def get_query_engine_tools(retriever, reranker, synthesizer) -> List[QueryEngine
 
         semantic_tool = QueryEngineTool(
             query_engine=semantic_engine,
-            metadata={"name": "semantic_search", "description": (
-                "Use this tool for searches over the jailbreak prompt corpus. "
-                "Use when the query is looking for real prompt examples, "
-                "attack patterns, or technique demonstrations."
-            )},
+            metadata=ToolMetadata(
+                name="semantic_search",
+                description=(
+                    "Use this tool for searches over the jailbreak prompt corpus. "
+                    "Use when the query is looking for real prompt examples, "
+                    "attack patterns, or technique demonstrations."
+                ),
+            ),
         )
 
         logger.info("Semantic search tool configured")
@@ -45,11 +48,14 @@ def get_query_engine_tools(retriever, reranker, synthesizer) -> List[QueryEngine
 
         conceptual_tool = QueryEngineTool(
             query_engine=conceptual_engine,
-            metadata={"name": "conceptual_qa", "description": (
-                "Use this tool for conceptual questions about jailbreak "
-                "techniques, definitions, or AI safety concepts. Use when "
-                "the query asks what something is or how something works."
-            )},
+            metadata=ToolMetadata(
+                name="conceptual_qa",
+                description=(
+                    "Use this tool for conceptual questions about jailbreak "
+                    "techniques, definitions, or AI safety concepts. Use when "
+                    "the query asks what something is or how something works."
+                ),
+            ),
         )
 
         logger.info("Conceptual question tool configured")

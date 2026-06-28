@@ -1,6 +1,39 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Aligned router tool metadata with the installed LlamaIndex version.
+
+Issue:
+- Query-time routing was failing in `router.py` with
+  `ValueError: Unexpected type: <class 'dict'>` because
+  `QueryEngineTool` metadata for `semantic_search` and `conceptual_qa`
+  was still being passed as plain dictionaries.
+
+Change:
+- Updated `router.py` to import the installed LlamaIndex
+  `ToolMetadata` type alongside `QueryEngineTool`.
+- Replaced both raw metadata dictionaries with structured
+  `ToolMetadata(name=..., description=...)` objects while preserving the
+  existing tool names and descriptions.
+- Kept the rest of the router behavior unchanged:
+  `LLMSingleSelector` still drives `RouterQueryEngine`, the semantic
+  route still uses `RetrieverQueryEngine` with the retriever, Cohere
+  reranker, and synthesizer, and the conceptual route remains the same.
+
+Why this was needed:
+- This was a compatibility fix for the installed LlamaIndex tool API,
+  not a routing redesign. The documented architecture remained correct,
+  but the router implementation was still using an older metadata shape
+  that the current `QueryEngineTool` constructor no longer accepts.
+
+Result:
+- Frontend searches and `POST /api/query` should now progress past the
+  previous router metadata type error without changing retrieval,
+  synthesis, or response-shape behavior.
+
+---
+
+## 2026-06-28
 Replaced stale hardcoded API stats with a live Qdrant-backed count.
 
 Issue:
