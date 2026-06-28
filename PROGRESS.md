@@ -1,6 +1,41 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Increased result-card prompt excerpts from ~300 to ~500 characters.
+
+Issue:
+- Search result cards were truncating prompt excerpts at roughly 300
+  characters, which sometimes cut off useful context too early for
+  scan-first review.
+- The full prompt was still available through the explicit `View Full
+  Prompt` workflow, but the feed itself could surface a bit more
+  evidence without changing the API shape or inspection model.
+
+Change:
+- Updated `app.py` so `prompt_excerpt` now uses the first 500
+  characters of the stored prompt text instead of the first 300.
+- Kept the existing truncation behavior that avoids splitting the
+  excerpt mid-word when a longer prompt is clipped.
+- Left the full-prompt endpoint and modal workflow unchanged.
+
+Why this was the correct fix:
+- This is a small UI polish that improves card-level context while
+  preserving RedLib's existing scan-friendly result design.
+- Keeping the change in the backend excerpt builder means the frontend
+  continues to render the same field and the API response schema does
+  not change.
+
+Verification:
+- Verified in `app.py` that the only `prompt_excerpt` construction path
+  now uses a shared `PROMPT_EXCERPT_CHARS = 500` constant.
+- Verified the frontend still renders `result.prompt_excerpt` directly,
+  so cards will receive the longer excerpt without any UI code changes.
+- Attempted live HTTP verification against the local backend, but the
+  endpoint did not respond during this session, so no runtime screenshot
+  or API payload sample was captured here.
+
+---
+## 2026-06-28
 Added lazy full-prompt fetching for explicit source inspection.
 
 Issue:

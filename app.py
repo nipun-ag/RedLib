@@ -26,6 +26,7 @@ from rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"
+PROMPT_EXCERPT_CHARS = 500
 TECHNIQUE_CATEGORIES = [
     ("Persona Hijacking", "psychology_alt"),
     ("Fictional Framing", "movie"),
@@ -301,9 +302,9 @@ async def query(request: QueryRequest) -> QueryResponse:
             metadata = node.metadata
             text = node.get_content(metadata_mode=MetadataMode.NONE)
 
-            # Truncate to 300 chars without splitting words
-            excerpt = text[:300]
-            if len(text) > 300:
+            # Keep result cards scan-friendly while showing more prompt context.
+            excerpt = text[:PROMPT_EXCERPT_CHARS]
+            if len(text) > PROMPT_EXCERPT_CHARS:
                 last_space = excerpt.rfind(" ")
                 if last_space > 0:
                     excerpt = excerpt[:last_space]
