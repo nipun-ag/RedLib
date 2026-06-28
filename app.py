@@ -24,6 +24,18 @@ from rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"
+TECHNIQUE_CATEGORIES = [
+    ("Persona Hijacking", "psychology_alt"),
+    ("Fictional Framing", "movie"),
+    ("Authority Impersonation", "admin_panel_settings"),
+    ("Token Manipulation", "code"),
+    ("Gradual Escalation", "trending_up"),
+    ("Hypothetical Distancing", "science"),
+    ("Instruction Injection", "edit_note"),
+    ("Social Engineering", "sentiment_very_dissatisfied"),
+    ("Multi-language Switching", "translate"),
+    ("Payload Splitting", "call_split"),
+]
 
 
 # Pydantic models
@@ -94,19 +106,26 @@ def get_qdrant_client() -> QdrantClient:
     )
 
 
-def get_prompt_by_id(prompt_id: str) -> PromptResponse:
-    """Fetch a single prompt by metadata prompt_id directly from Qdrant."""
-    client = get_qdrant_client()
+def ensure_keyword_payload_index(client: QdrantClient, field_name: str) -> None:
+    """Ensure a keyword payload index exists for a field used in Qdrant filters."""
     collection_info = client.get_collection(QDRANT_COLLECTION_NAME)
     payload_schema = collection_info.payload_schema or {}
 
-    if "prompt_id" not in payload_schema:
-        logger.info("Creating missing Qdrant keyword payload index for prompt_id")
-        client.create_payload_index(
-            collection_name=QDRANT_COLLECTION_NAME,
-            field_name="prompt_id",
-            field_schema=PayloadSchemaType.KEYWORD,
-        )
+    if field_name in payload_schema:
+        return
+
+    logger.info(f"Creating missing Qdrant keyword payload index for {field_name}")
+    client.create_payload_index(
+        collection_name=QDRANT_COLLECTION_NAME,
+        field_name=field_name,
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
+
+
+def get_prompt_by_id(prompt_id: str) -> PromptResponse:
+    """Fetch a single prompt by metadata prompt_id directly from Qdrant."""
+    client = get_qdrant_client()
+    ensure_keyword_payload_index(client, "prompt_id")
 
     records, _ = client.scroll(
         collection_name=QDRANT_COLLECTION_NAME,
@@ -135,6 +154,45 @@ def get_prompt_by_id(prompt_id: str) -> PromptResponse:
         technique=payload.get("technique", "Unknown"),
         source=payload.get("source", ""),
     )
+
+
+def get_category_items() -> list[CategoryItem]:
+    """Fetch live corpus counts for each technique category from Qdrant."""
+    client = get_qdrant_client()
+    technique_counts = {
+        technique_name: 0 for technique_name, _ in TECHNIQUE_CATEGORIES
+    }
+
+    next_page_offset = None
+    while True:
+        records, next_page_offset = client.scroll(
+            collection_name=QDRANT_COLLECTION_NAME,
+            limit=1000,
+            offset=next_page_offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        for record in records:
+            payload = record.payload or {}
+            technique_name = payload.get("technique")
+            if technique_name in technique_counts:
+                technique_counts[technique_name] += 1
+
+        if next_page_offset is None:
+            break
+
+    categories: list[CategoryItem] = []
+    for technique_name, icon in TECHNIQUE_CATEGORIES:
+        categories.append(
+            CategoryItem(
+                name=technique_name,
+                count=technique_counts[technique_name],
+                icon=icon,
+            )
+        )
+
+    return categories
 
 
 # Lifespan context manager for startup/shutdown
@@ -179,7 +237,10 @@ async def query(request: QueryRequest) -> QueryResponse:
     try:
         # Build metadata filters if category_filter provided
         filters = None
+        retriever_filters = []
         if request.category_filter:
+            client = get_qdrant_client()
+            ensure_keyword_payload_index(client, "technique")
             filters = MetadataFilters(
                 filters=[
                     MetadataFilter(
@@ -190,20 +251,20 @@ async def query(request: QueryRequest) -> QueryResponse:
                 ]
             )
 
+            fusion_retriever = app.state.query_engine.retriever
+            retriever_filters = [
+                (retriever, getattr(retriever, "_filters", None))
+                for retriever in getattr(fusion_retriever, "_retrievers", [])
+            ]
+            for retriever, _ in retriever_filters:
+                retriever._filters = filters
+
         # Run query in thread executor (query_engine.query is synchronous)
         loop = asyncio.get_event_loop()
-        if filters:
-            response = await loop.run_in_executor(
-                None,
-                lambda: app.state.query_engine.query(
-                    request.query, filters=filters
-                ),
-            )
-        else:
-            response = await loop.run_in_executor(
-                None,
-                lambda: app.state.query_engine.query(request.query),
-            )
+        response = await loop.run_in_executor(
+            None,
+            lambda: app.state.query_engine.query(request.query),
+        )
 
         # Build results array and technique breakdown
         results: List[ResultCard] = []
@@ -253,44 +314,29 @@ async def query(request: QueryRequest) -> QueryResponse:
     except Exception as e:
         logger.error("Query pipeline error", exc_info=True)
         raise HTTPException(status_code=500, detail="Query pipeline error")
+    finally:
+        for retriever, original_filters in retriever_filters:
+            retriever._filters = original_filters
 
 
 @app.get("/api/categories")
 async def get_categories() -> CategoriesResponse:
     """
-    Returns all 10 technique categories with counts.
-
-    Phase 1: Counts remain hardcoded as 0.
+    Returns all 10 technique categories with live corpus counts.
     """
-    categories = [
-        {"name": "Persona Hijacking", "count": 0, "icon": "psychology_alt"},
-        {"name": "Fictional Framing", "count": 0, "icon": "movie"},
-        {
-            "name": "Authority Impersonation",
-            "count": 0,
-            "icon": "admin_panel_settings",
-        },
-        {"name": "Token Manipulation", "count": 0, "icon": "code"},
-        {"name": "Gradual Escalation", "count": 0, "icon": "trending_up"},
-        {
-            "name": "Hypothetical Distancing",
-            "count": 0,
-            "icon": "science",
-        },
-        {"name": "Instruction Injection", "count": 0, "icon": "edit_note"},
-        {
-            "name": "Social Engineering",
-            "count": 0,
-            "icon": "sentiment_very_dissatisfied",
-        },
-        {
-            "name": "Multi-language Switching",
-            "count": 0,
-            "icon": "translate",
-        },
-        {"name": "Payload Splitting", "count": 0, "icon": "call_split"},
-    ]
-    return CategoriesResponse(categories=categories)
+    try:
+        loop = asyncio.get_event_loop()
+        categories = await loop.run_in_executor(None, get_category_items)
+        return CategoriesResponse(categories=categories)
+    except Exception as e:
+        logger.error(
+            f"Failed to load category counts from Qdrant: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load category counts",
+        )
 
 
 @app.get("/api/prompts/{prompt_id}")

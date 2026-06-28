@@ -44,6 +44,62 @@ Result:
 
 ---
 ## 2026-06-28
+Replaced hardcoded zero sidebar counters with live technique totals.
+
+Issue:
+- The left sidebar technique counters all displayed `0`, which made the
+  corpus navigation controls look empty even though Qdrant contained
+  thousands of prompts.
+- Frontend tracing showed `frontend/js/app.js` already fetched
+  `/api/categories` and rendered whatever `count` values the backend
+  returned. The problem was upstream: `app.py` returned a hardcoded
+  category list with zero counts.
+
+Root cause:
+- `GET /api/categories` in `app.py` was still a Phase 1 placeholder that
+  returned the ten technique names with static `count: 0`.
+- While implementing a live backend count path, a second compatibility
+  issue surfaced: this Qdrant collection does not have a keyword payload
+  index on `technique`, so direct filtered count requests fail with
+  `Index required but not found for "technique"`.
+- The same missing index also affected the existing category-filtered
+  search path, and `app.py` was additionally trying to pass
+  `filters=...` into `query_engine.query(...)`, which the installed
+  LlamaIndex `BaseQueryEngine` does not accept.
+
+Change:
+- Replaced the hardcoded category response with a live aggregation helper
+  in `app.py` that scrolls the Qdrant payloads and counts prompts by
+  `technique` in-process. This keeps `/api/categories` live without
+  requiring re-ingestion or a new schema migration.
+- Added a reusable keyword-index helper for Qdrant-filtered fields.
+- Preserved category filtering by applying the selected
+  `MetadataFilters` directly to the active underlying retrievers before
+  query execution, then restoring the original retriever state after the
+  request completes.
+
+Why this was the correct fix:
+- The sidebar counters are corpus-navigation metadata, so they should be
+  sourced from the live corpus, not from current search-result counts or
+  placeholder values.
+- Using scroll-based aggregation avoids turning this UI bug into a
+  mandatory re-indexing task.
+- The frontend design and rendering path were already correct, so the
+  smallest fix was entirely backend-side.
+
+Verification:
+- `GET /api/categories` now returns live counts, for example:
+  `Persona Hijacking=2254`, `Fictional Framing=330`,
+  `Instruction Injection=755`.
+- The frontend rendering path remained unchanged and now has non-zero
+  values to display.
+- `POST /api/query` with
+  `{"query":"persona hijack","category_filter":"Persona Hijacking"}`
+  succeeds and still returns filtered results, confirming that the
+  sidebar filter workflow remains intact.
+
+---
+## 2026-06-28
 Fixed an unintended two-result cap in the active retrieval pipeline.
 
 Issue:
