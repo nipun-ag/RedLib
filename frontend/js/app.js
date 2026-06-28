@@ -137,8 +137,9 @@ function toggleTechnique(technique, row) {
         row.classList.add("active");
     }
 
-    // Re-run search if there's a query
-    if (currentQuery) {
+    // Run a search whenever a category is toggled if either a text query
+    // or an active category can drive the request.
+    if (currentQuery || activeCategory) {
         handleSearch();
     }
 }
@@ -166,10 +167,11 @@ function loadStats() {
 // Handle search
 function handleSearch() {
     const query = document.getElementById("search-input").value.trim();
-    if (!query) return;
+    const effectiveQuery = query || activeCategory;
+    if (!effectiveQuery) return;
 
     currentQuery = query;
-    runSearch(query, activeCategory);
+    runSearch(effectiveQuery, activeCategory);
 }
 
 // Run search query

@@ -44,6 +44,46 @@ Result:
 
 ---
 ## 2026-06-28
+Fixed category clicks so technique selection immediately loads results.
+
+Issue:
+- Clicking a visible technique in the sidebar updated the active visual
+  state but did not load any results when the search box was empty.
+- This made the category list feel broken even though the filters and
+  counts themselves were rendering correctly.
+
+Root cause:
+- In `frontend/js/app.js`, the category click handler only called
+  `handleSearch()` when `currentQuery` was already non-empty.
+- `handleSearch()` also returned early if the search input was blank.
+- As a result, category selection without a prior typed query never sent
+  a request to `/api/query`.
+
+Change:
+- Updated `handleSearch()` so it uses the active category name as a
+  fallback query when the search box is empty.
+- Updated the category toggle path so clicking a category triggers
+  search whenever either a text query or an active category can drive
+  the request.
+
+Why this was the correct fix:
+- Category clicks are a first-class navigation action, so they should
+  produce corpus-grounded results even without a typed free-text query.
+- Using the category name itself as the fallback query preserves the
+  existing `/api/query` contract and keeps the search corpus-grounded.
+
+Verification:
+- Direct backend verification confirmed category-filtered requests work,
+  for example:
+  `{"query":"Fictional Framing","category_filter":"Fictional Framing"}`
+  returns five filtered results.
+- The frontend click flow now reaches that same backend path when the
+  user selects a category with an empty search box.
+- Normal typed searches still work, and typed queries continue to
+  combine with an active category filter when one is selected.
+
+---
+## 2026-06-28
 Improved sidebar technique loading so labels appear immediately and
 counts hydrate asynchronously.
 
