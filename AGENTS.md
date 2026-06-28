@@ -210,7 +210,8 @@ Phase 1 - In Development
 - Corpus architecture is organized around a staged local workflow:
   fetch, audit, normalize, discover taxonomy, classify, ingest
 - `fetch_corpus.py` is implemented as an acquisition-only raw snapshot
-  stage with per-source metadata and clean rerun replacement behavior
+  stage with a multi-platform source registry, per-source metadata, and
+  clean rerun replacement behavior
 - `audit_corpus.py` is implemented as a read-only raw corpus quality
   analysis stage that writes `data/corpus/audit_report.json`
 - `normalize_corpus.py` is implemented as a deterministic provenance-

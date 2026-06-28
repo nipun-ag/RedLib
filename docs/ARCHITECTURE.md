@@ -30,7 +30,7 @@ Frontend assets live under `frontend/` as static HTML/CSS/JS.
 redlib/
 |- app.py                  # FastAPI app entry point. All API routes.
 |- rag.py                  # Assembles the full LlamaIndex query pipeline.
-|- fetch_corpus.py         # Snapshots public datasets into local corpus storage.
+|- fetch_corpus.py         # Snapshots public datasets and raw source files into local corpus storage.
 |- audit_corpus.py         # Analyzes raw corpus quality without modifying it.
 |- normalize_corpus.py     # Deterministically normalizes prompt records.
 |- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
@@ -75,7 +75,9 @@ redlib/
 Public Datasets
 │
 ├── fetch_corpus.py
-│      Download and locally snapshot every dataset into the reproducible corpus.
+│      Download and locally snapshot every source into the reproducible corpus.
+│      Supports multiple acquisition platforms such as Hugging Face
+│      datasets and raw GitHub-hosted files.
 │
 ▼
 data/corpus/raw/
@@ -135,6 +137,9 @@ Qdrant
 
 - `fetch_corpus.py` exists so dataset acquisition is reproducible and
   separated from every downstream transformation.
+- The fetch stage may pull from multiple source platforms, but every
+  source is still snapshotted into the same canonical local raw corpus
+  layout before any audit or normalization work begins.
 - `audit_corpus.py` exists so quality problems are measured before
   cleanup rules are chosen, rather than hidden by eager mutation.
 - `normalize_corpus.py` exists so ingestion receives a stable prompt

@@ -1,6 +1,69 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Expanded `fetch_corpus.py` into a multi-platform acquisition stage and
+extended the RedLib v1 raw corpus registry.
+
+Issue:
+- The first fetch-stage implementation only supported Hugging Face
+  datasets, but the planned RedLib v1 corpus now includes both
+  additional Hugging Face sources and at least one raw GitHub-hosted
+  artifact (`AdvBench`).
+- Keeping the registry Hugging Face-only would make every non-HF source
+  a special-case rewrite instead of a declarative source addition.
+
+Change:
+- Refactored `fetch_corpus.py` into a platform-aware registry with:
+  `source_type="huggingface"` and `source_type="github_raw"`.
+- Added platform-specific fetch paths:
+  `fetch_huggingface_snapshot(...)` for dataset-to-JSONL snapshots and
+  `fetch_github_raw_snapshot(...)` for raw-file byte snapshots.
+- Kept the generic fetch dispatcher, staging directory workflow
+  (`data/corpus/raw_staging/` -> `data/corpus/raw/`), per-source folder
+  layout, and one `fetch_metadata.json` per source.
+- Expanded the source registry with the RedLib v1 additions:
+  `allenai/wildjailbreak`,
+  `JailbreakBench/JBB-Behaviors` harmful behaviors,
+  `walledai/MaliciousInstruct`,
+  and the raw GitHub `AdvBench` file
+  `data/advbench/harmful_behaviors.csv` from `llm-attacks/llm-attacks`.
+- Preserved platform-native raw formats:
+  Hugging Face snapshots continue to be written as JSONL records, while
+  AdvBench is now saved as raw CSV bytes without semantic conversion.
+- Extended fetch metadata so each snapshot records source platform,
+  dataset identifier or URL, snapshot name, output file, fetch
+  timestamp, record count where countable, and byte count.
+
+Why this implementation was needed:
+- RedLib's fetch stage needs to stay acquisition-only while still being
+  flexible enough to absorb real corpus sources that are not all hosted
+  behind one platform API.
+- A declarative registry keeps new source additions mostly data-only
+  rather than forcing fetch-loop rewrites.
+- Preserving raw CSV for AdvBench keeps source fidelity intact for later
+  audit and normalization stages, which is the right separation of
+  concerns for this pipeline.
+
+Conservative source-selection note:
+- `JBB-Behaviors` exposes a clearly named harmful split, so only the
+  harmful behaviors snapshot was added.
+- `WildJailbreak` appears to expose `train` and `eval` configs rather
+  than a clearly separate harmful-only split; those raw configs were
+  snapshotted conservatively without row-level filtering at fetch time.
+- RedLib should revisit `WildJailbreak` field and subset treatment
+  during audit/normalization follow-up rather than pretending the fetch
+  platform already exposes the exact final jailbreak-only slice.
+
+Verification:
+- Confirmed the refactor remains acquisition-only and does not invoke
+  audit, normalization, classification, taxonomy discovery, ingestion,
+  embeddings, Qdrant, or LLM calls.
+- Attempted live fetch verification, but this shell session still does
+  not have a usable Python interpreter and also cannot exercise network
+  fetches here, so runtime execution could not be completed in-session.
+
+---
+## 2026-06-28
 Implemented the third staged corpus-build script: `normalize_corpus.py`.
 
 Issue:
