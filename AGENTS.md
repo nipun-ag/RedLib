@@ -40,7 +40,7 @@ Local dev:
 redlib/
 |- app.py                # FastAPI app, all API routes
 |- rag.py                # LlamaIndex query pipeline (entry point)
-|- fetch_corpus.py       # Snapshot public datasets into versioned local raw corpus storage
+|- fetch_corpus.py       # Snapshot public datasets into local raw corpus storage
 |- audit_corpus.py       # Analyze raw corpus quality without modifying source data
 |- normalize_corpus.py   # Deterministically normalize prompts into a stable corpus format
 |- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
@@ -52,7 +52,7 @@ redlib/
 |- synthesizer.py        # LlamaIndex ResponseSynthesizer + Haiku config
 |- data/
 |  `- corpus/
-|     |- raw/            # Immutable dataset snapshots by corpus version
+|     |- raw/            # Immutable source dataset snapshots
 |     |- audit_report.json
 |     |- normalized.jsonl
 |     |- taxonomy_candidates.json
@@ -108,7 +108,7 @@ Current corpus pipeline:
 7. `ingest.py` embeds only the finalized `classified.jsonl` corpus into Qdrant
 
 Each corpus-stage script has exactly one responsibility:
-- `fetch_corpus.py`: acquisition and versioned local snapshotting only
+- `fetch_corpus.py`: acquisition and local snapshotting only
 - `audit_corpus.py`: quality analysis only
 - `normalize_corpus.py`: deterministic normalization only
 - `discover_taxonomy.py`: taxonomy discovery only
@@ -117,7 +117,7 @@ Each corpus-stage script has exactly one responsibility:
 
 ## Corpus Principles
 - Raw datasets remain untouched after snapshotting
-- Every corpus version should be reproducible
+- The corpus should be reproducible on each build
 - Normalization must be deterministic
 - Taxonomy should be discovered from the corpus before it is applied
 - Human review sits between taxonomy discovery and corpus-wide classification

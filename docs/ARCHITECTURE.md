@@ -75,7 +75,7 @@ redlib/
 Public Datasets
 │
 ├── fetch_corpus.py
-│      Download and locally snapshot every dataset into a reproducible corpus version.
+│      Download and locally snapshot every dataset into the reproducible corpus.
 │
 ▼
 data/corpus/raw/
@@ -154,7 +154,7 @@ Qdrant
 
 ### `data/corpus/raw/`
 - Immutable local snapshot of every source dataset
-- Source of truth for reproducible corpus versions
+- Source of truth for reproducible corpus builds
 - Never edited in place
 
 ### `audit_report.json`

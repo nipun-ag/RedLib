@@ -2,7 +2,7 @@
 
 RedLib is a retrieval-augmented research tool for AI safety
 practitioners and red teamers working with real jailbreak prompts. It
-combines a versioned local corpus pipeline with Qdrant-backed retrieval
+combines a local corpus pipeline with Qdrant-backed retrieval
 so contributors can search, inspect, and synthesize patterns across a
 curated prompt corpus.
 
@@ -39,8 +39,8 @@ in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
 
 At a high level, the corpus pipeline is:
 
-1. `fetch_corpus.py` snapshots public datasets into a local corpus
-   version under `data/corpus/raw/`.
+1. `fetch_corpus.py` snapshots public datasets into local raw corpus
+   storage under `data/corpus/raw/`.
 2. `audit_corpus.py` evaluates raw corpus quality without modifying the
    source data.
 3. `normalize_corpus.py` produces a deterministic, ingestion-ready
@@ -53,8 +53,8 @@ At a high level, the corpus pipeline is:
 7. `ingest.py` embeds only the finalized classified corpus and writes it
    to Qdrant.
 
-This design keeps raw source data untouched, makes corpus versions
-reproducible, and separates data cleaning, taxonomy design, and vector
+This design keeps raw source data untouched, makes the corpus
+reproducible on each build, and separates data cleaning, taxonomy design, and vector
 ingestion into distinct responsibilities.
 
 ---
@@ -133,7 +133,7 @@ for API requests.
 
 ## Repository Guide
 
-- `fetch_corpus.py`: snapshot public datasets into versioned local raw corpus storage
+- `fetch_corpus.py`: snapshot public datasets into local raw corpus storage
 - `audit_corpus.py`: analyze raw corpus quality without modifying source data
 - `normalize_corpus.py`: deterministically normalize prompts into a stable corpus format
 - `discover_taxonomy.py`: derive candidate attack families from the normalized corpus

@@ -52,7 +52,7 @@ redlib/
 ├── synthesizer.py        # LlamaIndex ResponseSynthesizer + Haiku config
 ├── data/
 │   └── corpus/
-│      ├── raw/            # Immutable dataset snapshots by corpus version
+│      ├── raw/            # Immutable source dataset snapshots
 │      ├── audit_report.json
 │      ├── normalized.jsonl
 │      ├── taxonomy_candidates.json
