@@ -87,6 +87,7 @@ def get_retriever(embed_model, top_k: int = 20):
     retriever = QueryFusionRetriever(
         retrievers=[dense_retriever, sparse_retriever],
         mode="reciprocal_rerank",
+        similarity_top_k=top_k,
         num_queries=1,
         use_async=False,
     )

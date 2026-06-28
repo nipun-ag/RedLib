@@ -43,6 +43,50 @@ Result:
   endpoint and a correctly labeled frontend modal.
 
 ---
+## 2026-06-28
+Fixed an unintended two-result cap in the active retrieval pipeline.
+
+Issue:
+- Searches were only returning two prompt cards in the UI, even though
+  `retriever.py` configured dense and sparse retrieval with `top_k=20`
+  and the frontend rendered every result the API returned.
+- Investigation showed the active backend path was:
+  `QueryFusionRetriever` -> `CohereRerank` -> `RetrieverQueryEngine` ->
+  `/api/query`, and the API itself was already returning only two
+  results.
+
+Root cause:
+- `retriever.py` passed `top_k=20` into the dense and sparse
+  sub-retrievers, but did not pass `similarity_top_k` into
+  `QueryFusionRetriever`.
+- In the installed LlamaIndex version, `QueryFusionRetriever` defaults
+  `similarity_top_k` to `DEFAULT_SIMILARITY_TOP_K`, and that constant is
+  `2`.
+- That meant the fusion layer was clipping the merged result set to two
+  nodes before Cohere reranking ever ran, so the intended `top_n=5`
+  reranker cap never had a chance to apply.
+
+Change:
+- Updated `retriever.py` so `QueryFusionRetriever` now receives
+  `similarity_top_k=top_k`.
+
+Why this was the correct fix:
+- The intended flow is:
+  dense 20 + sparse 20 -> fusion keeps 20 -> Cohere rerank keeps 5 ->
+  API returns up to 5 cards.
+- `CohereRerank(top_n=5)` remains the correct final cap because it is
+  the deliberate post-fusion ranking stage. The bug was the accidental
+  earlier cap at fusion, not the reranker.
+
+Verification:
+- Queried the live backend with:
+  `{"query":"persona hijack","category_filter":null}`
+- Before the fix, `/api/query` returned `result_count=2`.
+- After the fix, `/api/query` returned `result_count=5` and five result
+  cards, confirming that the API and frontend now surface the full
+  reranked set.
+
+---
 
 ## 2026-06-28
 Removed the direct conceptual query route so all answers are grounded in
