@@ -1,6 +1,55 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Implemented the second staged corpus-build script: `audit_corpus.py`.
+
+Issue:
+- The staged corpus pipeline now had an acquisition step
+  (`fetch_corpus.py`), but it still lacked the read-only audit stage
+  that measures raw corpus quality before any cleanup or taxonomy work.
+- The raw snapshots intentionally preserve upstream schema differences
+  and text artifacts, so RedLib needed a dedicated report that observes
+  those conditions without mutating the source files.
+
+Change:
+- Added a new `audit_corpus.py` that reads only `data/corpus/raw/` and
+  writes `data/corpus/audit_report.json`.
+- Implemented corpus-level, source-level, file-level, and field-level
+  summaries over raw JSONL snapshots.
+- Added audit coverage for:
+  total sources, total files, total records, per-source record counts,
+  empty records, malformed JSONL lines, missing/null values by field,
+  schema variation, duplicate raw records, duplicate likely prompt text,
+  very short text fields, very long text fields, HTML entity indicators,
+  escaped newline indicators, and suspicious control characters.
+- Implemented statistical detection of likely prompt-bearing fields
+  based on raw string coverage and length, while explicitly avoiding any
+  canonical field choice or normalization decision.
+- Made the script fail clearly if `data/corpus/raw/` does not exist, so
+  the staged workflow remains explicit:
+  fetch first, audit second.
+
+Why this implementation was needed:
+- Audit belongs between acquisition and normalization because RedLib
+  needs to understand real upstream quality problems before choosing any
+  cleanup rules.
+- The report now gives later stages an observable baseline for schema
+  drift, malformed lines, duplicates, and text-shape anomalies without
+  silently rewriting the evidence.
+- Keeping the audit strictly read-only preserves the single
+  responsibility of this stage and prevents early normalization from
+  leaking into raw corpus handling.
+
+Verification:
+- Confirmed the implementation reads raw `*.jsonl` files, writes only
+  `data/corpus/audit_report.json`, and does not create normalized,
+  taxonomy, classified, embedding, or Qdrant artifacts.
+- Attempted live script verification, but this shell session still does
+  not have a usable Python interpreter available, so runtime execution
+  could not be completed here.
+
+---
+## 2026-06-28
 Synchronized `CLAUDE.md` with current RedLib architecture.
 
 Issue:
