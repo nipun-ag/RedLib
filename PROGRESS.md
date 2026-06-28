@@ -1,6 +1,47 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Synchronized `CLAUDE.md` with current RedLib architecture.
+
+Issue:
+- `CLAUDE.md` contained obsolete Pinecone-era references, "nothing built
+  yet" placeholders, and stale implementation notes that conflicted with
+  the current Qdrant-backed, fully-implemented system described in
+  `AGENTS.md` and `docs/ARCHITECTURE.md`.
+
+Change:
+- Replaced all Pinecone references with Qdrant Cloud.
+- Updated tech stack section to reflect current implementation.
+- Rewrote file structure to include all six corpus pipeline scripts
+  (`fetch_corpus.py`, `audit_corpus.py`, `normalize_corpus.py`,
+  `discover_taxonomy.py`, `classify_corpus.py`, `ingest.py`) and the
+  organized `data/corpus/` directory structure.
+- Updated pipeline stages section to describe the single corpus-grounded
+  `RetrieverQueryEngine` path (no RouterQueryEngine, no conceptual bypass).
+- Rewrote common task patterns to reflect the staged corpus workflow
+  instead of direct dataset loading and ingestion.
+- Updated "Current Project State" to reflect that the system is fully
+  implemented and operational.
+- Removed deployment-tier details (Vercel, Hetzner) that belong in
+  infrastructure documentation, not coding-agent instructions.
+- Preserved coding conventions, git commit format, and self-updating
+  meta-instruction, which remain valid.
+
+Why this synchronization was needed:
+- `CLAUDE.md` is the active coding-agent instruction file. When it
+  conflicts with the source of truth (`AGENTS.md`, `docs/ARCHITECTURE.md`),
+  the agent may act on stale assumptions.
+- The previous version assumed pre-implementation state and direct
+  Pinecone integration. Claude acting on those instructions would propose
+  changes to a system that no longer exists.
+
+Result:
+- `CLAUDE.md` now accurately reflects the current implemented system and
+  can serve as the active instruction file for Claude during development
+  sessions.
+
+---
+## 2026-06-28
 Redesigned the documented corpus architecture around a staged local
 pipeline.
 
