@@ -43,7 +43,7 @@ redlib/
 |- ingest.py           # Ingestion pipeline (run manually)
 |- embedder.py         # OpenAI embedding model configuration
 |- retriever.py        # Qdrant hybrid retrieval + RRF + Cohere rerank
-|- router.py           # LlamaIndex RouterQueryEngine setup
+|- router.py           # Corpus-grounded query engine assembly
 |- synthesizer.py      # LlamaIndex ResponseSynthesizer + Haiku config
 |- data_loader.py      # HuggingFace dataset loaders + cleaning
 |- classifier.py       # Claude Haiku technique label classifier
@@ -82,7 +82,7 @@ redlib/
 ## Pipeline Stages
 Read before touching any retrieval file:
 1. Query arrives at `POST /api/query` in `app.py`
-2. `router.py` classifies intent via `RouterQueryEngine`
+2. `router.py` builds a single `RetrieverQueryEngine`
 3. `retriever.py` runs hybrid search via `QueryFusionRetriever`
 4. `retriever.py` applies `CohereRerank`
 5. `synthesizer.py` passes top nodes + query to Claude Haiku
@@ -173,6 +173,8 @@ After every session:
 ## Current Project State
 Phase 1 - In Development
 - Backend query pipeline is implemented
+- All user queries are corpus-grounded through the same retrieval path;
+  there is no direct conceptual LLM-only route
 - Ingestion is implemented with checkpoint resume support, timeout-wrapped
   classification, token counting, and oversized-prompt skipping safeguards
 - Prompt text lives in the `TextNode` body; metadata stores only

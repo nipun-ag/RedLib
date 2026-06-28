@@ -8,30 +8,27 @@ the synthesis prompt used by the query pipeline.
 ---
 
 ## Current Synthesis Flow
-RedLib uses one shared synthesis prompt for both routed query paths:
+RedLib uses one shared synthesis prompt for one corpus-grounded query path:
 
-1. `router.py` builds two query-engine tools:
-   - `semantic_search` for corpus-backed prompt searches
-   - `conceptual_qa` for conceptual questions
+1. `router.py` builds a single `RetrieverQueryEngine` for all user
+   queries.
 2. `rag.py` initializes:
    - OpenAI embeddings via `text-embedding-3-small`
    - hybrid retrieval via `QueryFusionRetriever`
    - reranking via `CohereRerank`
    - synthesis via `get_response_synthesizer(response_mode="compact")`
-   - routing via `RouterQueryEngine` with `LLMSingleSelector`
+   - a single corpus-backed query engine with no direct non-retrieval path
 3. `synthesizer.py` uses Anthropic model `claude-haiku-4-5` with a
    single `SYSTEM_PROMPT`.
-4. For semantic queries, the synthesizer receives the reranked retrieved
-   prompt nodes and produces a short grounded summary.
-5. For conceptual queries, the routed query engine answers directly
-   without a retriever, but it still uses the same synthesis prompt and
-   the same Anthropic model.
+4. For both example-seeking and conceptual questions, the synthesizer
+   receives reranked retrieved prompt nodes and produces a short
+   grounded summary.
 
 ---
 
 ## What The Synthesizer Does
-For semantic queries, Claude Haiku synthesizes a concise analytical
-summary from the retrieved prompt nodes.
+For all queries, Claude Haiku synthesizes a concise analytical summary
+from retrieved prompt nodes.
 
 The synthesizer does NOT:
 - Explain how to execute jailbreaks
@@ -72,7 +69,7 @@ over the problem.
 ---
 
 ## Semantic Query Structure
-The current system prompt instructs Haiku to answer semantic queries in
+The current system prompt instructs Haiku to answer corpus-grounded queries in
 this structure:
 
 1. Lead sentence naming the dominant technique or pattern
@@ -107,19 +104,22 @@ The current `SYSTEM_PROMPT` explicitly enforces these constraints:
 ---
 
 ## Conceptual Query Handling
-When the router selects `conceptual_qa`, the system still uses Claude
-Haiku and the same synthesis prompt, but no retriever is attached to the
-query engine.
+Conceptual questions now use the same corpus-backed retrieval path as
+all other user queries. They do not bypass retrieval or call Claude from
+general knowledge alone.
 
-For conceptual questions, the prompt instructs the model to:
+For conceptual questions, the prompt still instructs the model to:
 - Define terms using standard AI safety terminology
 - Use the 10 RedLib technique categories where applicable
 - Keep answers under 100 words
 
+In practice, those answers are now grounded in the retrieved RedLib
+prompt corpus rather than a direct LLM-only path.
+
 ---
 
 ## Retrieval Context Passed To Synthesis
-For semantic queries, the synthesis stage sits after the live retrieval
+For all queries, the synthesis stage sits after the live retrieval
 pipeline:
 
 - Qdrant hybrid retrieval via dense + sparse search

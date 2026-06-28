@@ -1,6 +1,51 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Removed the direct conceptual query route so all answers are grounded in
+the RedLib corpus.
+
+Issue:
+- The previous router design split queries into a corpus-backed
+  `semantic_search` tool and a direct `conceptual_qa` tool with
+  `retriever=None`.
+- That made RedLib behave partly like a general chatbot instead of a
+  corpus-grounded research assistant, and it also introduced a brittle
+  failure mode where conceptual traffic could hit
+  `'NoneType' object has no attribute 'retrieve'`.
+
+Change:
+- Replaced the two-route `RouterQueryEngine` setup with a single
+  `RetrieverQueryEngine` built in `router.py`.
+- Removed the direct `conceptual_qa` path entirely. All user queries now
+  flow through the same Qdrant-backed retrieval stack:
+  `QueryFusionRetriever` -> RRF -> `CohereRerank` -> Claude Haiku
+  synthesis.
+- Updated `rag.py` to assemble the simpler single-engine pipeline
+  instead of building router tools and a selector.
+- Updated `app.py` so `POST /api/query` now describes the endpoint as
+  corpus-grounded and returns `query_type="semantic"` consistently.
+- Updated `docs/ARCHITECTURE.md` and `docs/CONTEXT.md` to remove the old
+  conceptual-bypass description and document the new retrieval-first
+  behavior.
+
+Why this was needed:
+- This was an intentional architecture change, not just a compatibility
+  patch. RedLib's value is grounded analysis of real jailbreak prompts,
+  so even definition-style questions like "What is persona hijacking?"
+  should be answered from retrieved corpus evidence instead of Claude's
+  standalone prior knowledge.
+- Removing the `None` retriever path also simplified the pipeline and
+  eliminated a class of startup and query-time errors.
+
+Result:
+- All queries are now corpus-grounded, retrieved source nodes still flow
+  into the API response, and the synthesis constraints remain in place:
+  no full prompt reproduction, no execution-level jailbreak guidance,
+  and grounded summaries only.
+
+---
+
+## 2026-06-28
 Aligned router tool metadata with the installed LlamaIndex version.
 
 Issue:

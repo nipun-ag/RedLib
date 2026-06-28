@@ -1,15 +1,14 @@
-import os
 import logging
-from llama_index.core.query_engine import RouterQueryEngine
+from llama_index.core.query_engine import RetrieverQueryEngine
 from embedder import get_embed_model
 from retriever import get_retriever, get_reranker
-from synthesizer import get_synthesizer, get_llm
-from router import get_query_engine_tools, get_router
+from synthesizer import get_synthesizer
+from router import get_query_engine
 
 logger = logging.getLogger(__name__)
 
 
-def initialize_pipeline() -> RouterQueryEngine:
+def initialize_pipeline() -> RetrieverQueryEngine:
     """
     Assemble the full LlamaIndex query pipeline by connecting all components.
     Called once at server startup by app.py. Never run directly.
@@ -19,11 +18,10 @@ def initialize_pipeline() -> RouterQueryEngine:
     2. Initialize retriever (connects to Qdrant internally)
     3. Initialize reranker
     4. Initialize synthesizer
-    5. Initialize LLM for router
-    6. Assemble router
+    5. Assemble a single corpus-grounded query engine
 
     Returns:
-        RouterQueryEngine: The fully configured query pipeline
+        RetrieverQueryEngine: The fully configured query pipeline
 
     Raises:
         ValueError: If required environment variables are missing
@@ -44,18 +42,13 @@ def initialize_pipeline() -> RouterQueryEngine:
 
         # Step 4: Initialize synthesizer
         synthesizer = get_synthesizer()
-        logger.info("Step 4/6: Synthesizer initialized")
+        logger.info("Step 4/5: Synthesizer initialized")
 
-        # Step 5: Initialize LLM for router
-        llm = get_llm()
-        logger.info("Step 5/6: LLM initialized")
+        # Step 5: Assemble a single corpus-grounded query engine
+        query_engine = get_query_engine(retriever, reranker, synthesizer)
+        logger.info("Step 5/5: Corpus-grounded query engine assembled. Pipeline ready.")
 
-        # Step 6: Assemble router
-        tools = get_query_engine_tools(retriever, reranker, synthesizer)
-        router = get_router(tools, llm)
-        logger.info("Step 6/6: Router assembled. Pipeline ready.")
-
-        return router
+        return query_engine
 
     except Exception as e:
         logger.error(f"Pipeline initialization failed: {str(e)}", exc_info=True)

@@ -19,7 +19,7 @@ redlib/
 |- ingest.py           # Ingestion script. Run manually.
 |- embedder.py         # Configures OpenAI text-embedding-3-small.
 |- retriever.py        # Configures Qdrant hybrid retrieval and Cohere rerank.
-|- router.py           # Configures LlamaIndex RouterQueryEngine.
+|- router.py           # Builds the corpus-grounded RetrieverQueryEngine.
 |- synthesizer.py      # Configures response synthesis with Claude Haiku 4.5.
 |- data_loader.py      # HuggingFace dataset loaders and record cleaning.
 |- classifier.py       # Assigns one of 10 technique labels during ingestion.
@@ -74,14 +74,15 @@ Response:
     "Persona Hijacking": 0
   },
   "result_count": 0,
-  "query_type": "semantic | conceptual"
+  "query_type": "semantic"
 }
 ```
 
 Implementation details:
 - `category_filter` is applied as a metadata filter on `technique`
 - `prompt_excerpt` is built from the node body, not from metadata
-- `query_type` is `"semantic"` when source nodes are returned, otherwise `"conceptual"`
+- `query_type` is always `"semantic"` because all queries now run through
+  the same corpus-grounded retrieval path
 
 ### GET /api/categories
 Returns the technique-category list used by the frontend.
@@ -201,19 +202,15 @@ Insert dense + sparse vectors with metadata into collection redlib
 ### Query Time
 ```text
 User query (POST /api/query)
-      -> router.py (RouterQueryEngine)
-      |-- semantic query -> QueryFusionRetriever
-      |         ->
-      |   Dense search + sparse search in Qdrant
-      |         -> RRF
-      |   Merged ranked list
-      |         -> CohereRerank
-      |   Top reranked nodes
-      |         -> synthesizer.py
-      |   Claude Haiku synthesized answer
-      |
-      `-- conceptual question -> direct answer path
-
+      -> router.py (RetrieverQueryEngine builder)
+      -> QueryFusionRetriever
+      -> Dense search + sparse search in Qdrant
+      -> RRF
+      -> Merged ranked list
+      -> CohereRerank
+      -> Top reranked nodes
+      -> synthesizer.py
+      -> Claude Haiku synthesized answer
       -> app.py
 Assemble response: answer + result cards + technique breakdown
       ->
@@ -248,7 +245,7 @@ Checkpoint behavior:
 | `retriever.py`   | `QueryFusionRetriever` | Hybrid search + RRF         |
 | `retriever.py`   | `QdrantVectorStore`    | Dense + sparse vector store |
 | `retriever.py`   | `CohereRerank`         | Reranking postprocessor     |
-| `router.py`      | `RouterQueryEngine`    | Query intent classification |
+| `router.py`      | `RetrieverQueryEngine` | Single corpus-grounded query engine |
 | `synthesizer.py` | `ResponseSynthesizer`  | Answer generation           |
 | `synthesizer.py` | `Anthropic`            | LLM for synthesis           |
 

@@ -116,8 +116,8 @@ async def query(request: QueryRequest) -> QueryResponse:
     """
     Main RAG query endpoint.
 
-    Routes semantic queries through the retrieval pipeline or answers
-    conceptual questions directly. Applies category filter if provided.
+    Routes all queries through the corpus-grounded retrieval pipeline.
+    Applies category filter if provided.
     """
     try:
         # Build metadata filters if category_filter provided
@@ -185,15 +185,12 @@ async def query(request: QueryRequest) -> QueryResponse:
             )
             results.append(result_card)
 
-        # Determine query type based on whether results were retrieved
-        query_type = "semantic" if response.source_nodes else "conceptual"
-
         return QueryResponse(
             answer=response.response or "",
             results=results,
             technique_breakdown=technique_counts,
             result_count=len(results),
-            query_type=query_type,
+            query_type="semantic",
         )
 
     except Exception as e:
