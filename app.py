@@ -1,6 +1,8 @@
 import logging
 import asyncio
 import os
+import threading
+import time
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
@@ -36,6 +38,12 @@ TECHNIQUE_CATEGORIES = [
     ("Multi-language Switching", "translate"),
     ("Payload Splitting", "call_split"),
 ]
+CATEGORY_CACHE_TTL_SECONDS = 300
+CATEGORY_CACHE_LOCK = threading.Lock()
+CATEGORY_CACHE: dict[str, object] = {
+    "items": None,
+    "expires_at": 0.0,
+}
 
 
 # Pydantic models
@@ -195,6 +203,25 @@ def get_category_items() -> list[CategoryItem]:
     return categories
 
 
+def get_cached_category_items() -> list[CategoryItem]:
+    """Return cached category counts when fresh, otherwise refresh them."""
+    now = time.monotonic()
+
+    with CATEGORY_CACHE_LOCK:
+        cached_items = CATEGORY_CACHE["items"]
+        expires_at = CATEGORY_CACHE["expires_at"]
+        if cached_items is not None and now < expires_at:
+            return list(cached_items)
+
+    categories = get_category_items()
+
+    with CATEGORY_CACHE_LOCK:
+        CATEGORY_CACHE["items"] = list(categories)
+        CATEGORY_CACHE["expires_at"] = time.monotonic() + CATEGORY_CACHE_TTL_SECONDS
+
+    return categories
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -326,7 +353,7 @@ async def get_categories() -> CategoriesResponse:
     """
     try:
         loop = asyncio.get_event_loop()
-        categories = await loop.run_in_executor(None, get_category_items)
+        categories = await loop.run_in_executor(None, get_cached_category_items)
         return CategoriesResponse(categories=categories)
     except Exception as e:
         logger.error(

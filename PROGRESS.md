@@ -44,6 +44,61 @@ Result:
 
 ---
 ## 2026-06-28
+Improved sidebar technique loading so labels appear immediately and
+counts hydrate asynchronously.
+
+Issue:
+- The sidebar technique list stayed blank until `/api/categories`
+  completed, which made the search page feel empty on first load.
+- After the live-count backend fix, `/api/categories` could take
+  noticeably longer because it computed counts from Qdrant rather than
+  returning placeholders.
+- Zero-count techniques also remained visible, which created dead-end
+  filters that added noise without helping corpus navigation.
+
+Root cause:
+- `frontend/js/app.js` waited for `/api/categories` before rendering any
+  technique rows, so there was no immediate scaffold for the sidebar.
+- The backend category endpoint was doing live work on every request,
+  which made repeated page loads slower than necessary.
+
+Change:
+- Added a frontend constant for the ten known RedLib techniques and
+  their icons.
+- The sidebar now renders those labels immediately on page load with
+  count badges showing `...` while live counts are loading.
+- When `/api/categories` returns, the frontend merges the live counts
+  into the existing technique list and re-renders it.
+- Techniques with `count === 0` are removed after counts are known, so
+  only useful corpus filters remain visible.
+- Preserved the current filter interaction by keeping the same category
+  names and row click behavior.
+- Added a lightweight backend cache for category counts in `app.py`, so
+  the first request computes live totals and subsequent requests reuse
+  them for a short TTL instead of rescanning Qdrant every time.
+
+Why this was the correct fix:
+- The technique list is navigational structure, so its labels should be
+  available immediately even before telemetry-style count data finishes
+  loading.
+- Count hydration belongs on top of a stable known taxonomy, not as a
+  prerequisite for rendering the sidebar at all.
+- Hiding zero-count categories after load keeps the filter list focused
+  without changing the underlying corpus model or query behavior.
+
+Verification:
+- `/api/categories` still returns the same response schema and live
+  counts.
+- Category-filtered `POST /api/query` requests still succeed, confirming
+  that sidebar filter behavior remains intact.
+- Repeated `/api/categories` requests showed the cache working in
+  practice: the first call took roughly `18813ms`, while the second
+  completed in roughly `44ms`.
+- The frontend now has immediate technique labels, loading-state badges,
+  and post-load zero-count hiding in the rendering path.
+
+---
+## 2026-06-28
 Replaced hardcoded zero sidebar counters with live technique totals.
 
 Issue:

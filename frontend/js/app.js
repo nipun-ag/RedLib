@@ -2,6 +2,18 @@
 let activeCategory = null;
 let currentQuery = "";
 let activePromptRequestId = 0;
+const TECHNIQUE_DEFINITIONS = [
+    { name: "Persona Hijacking", icon: "psychology_alt" },
+    { name: "Fictional Framing", icon: "movie" },
+    { name: "Authority Impersonation", icon: "admin_panel_settings" },
+    { name: "Token Manipulation", icon: "code" },
+    { name: "Gradual Escalation", icon: "trending_up" },
+    { name: "Hypothetical Distancing", icon: "science" },
+    { name: "Instruction Injection", icon: "edit_note" },
+    { name: "Social Engineering", icon: "sentiment_very_dissatisfied" },
+    { name: "Multi-language Switching", icon: "translate" },
+    { name: "Payload Splitting", icon: "call_split" },
+];
 
 // On page load
 document.addEventListener("DOMContentLoaded", function () {
@@ -10,6 +22,13 @@ document.addEventListener("DOMContentLoaded", function () {
         window.location.href = "index.html";
         return;
     }
+
+    renderTechniqueList(
+        TECHNIQUE_DEFINITIONS.map((technique) => ({
+            ...technique,
+            count: null,
+        })),
+    );
 
     // Load initial data
     Promise.all([loadCategories(), loadStats()]).catch((err) => {
@@ -43,12 +62,36 @@ function loadCategories() {
     return fetch(`${API_BASE}/api/categories`)
         .then((res) => res.json())
         .then((data) => {
-            renderTechniqueList(data.categories);
+            const countsByName = new Map(
+                (data.categories || []).map((category) => [
+                    category.name,
+                    category.count,
+                ]),
+            );
+
+            const visibleCategories = TECHNIQUE_DEFINITIONS
+                .map((technique) => ({
+                    ...technique,
+                    count: countsByName.get(technique.name) ?? 0,
+                }))
+                .filter((technique) => technique.count > 0);
+
+            if (
+                activeCategory &&
+                !visibleCategories.some(
+                    (technique) => technique.name === activeCategory,
+                )
+            ) {
+                activeCategory = null;
+                if (currentQuery) {
+                    runSearch(currentQuery, null);
+                }
+            }
+
+            renderTechniqueList(visibleCategories);
         })
         .catch((err) => {
             console.error("Error loading categories:", err);
-            document.getElementById("technique-list").innerHTML =
-                '<div style="color: var(--on-surface-variant); font-size: 14px; padding: 12px;">Categories unavailable</div>';
         });
 }
 
@@ -57,28 +100,18 @@ function renderTechniqueList(categories) {
     const list = document.getElementById("technique-list");
     list.innerHTML = "";
 
-    const icons = [
-        "psychology_alt",
-        "movie",
-        "admin_panel_settings",
-        "code",
-        "trending_up",
-        "science",
-        "edit_note",
-        "sentiment_very_dissatisfied",
-        "translate",
-        "call_split",
-    ];
-
-    categories.forEach((category, index) => {
+    categories.forEach((category) => {
         const row = document.createElement("div");
         row.className = "technique-row";
         row.dataset.technique = category.name;
+        if (activeCategory === category.name) {
+            row.classList.add("active");
+        }
 
         row.innerHTML = `
-            <span class="material-symbols-outlined">${icons[index] || "psychology_alt"}</span>
+            <span class="material-symbols-outlined">${category.icon || "psychology_alt"}</span>
             <span class="technique-name">${category.name}</span>
-            <span class="technique-badge">${category.count}</span>
+            <span class="technique-badge">${category.count ?? "..."}</span>
         `;
 
         row.addEventListener("click", function () {
