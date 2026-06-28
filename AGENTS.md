@@ -213,6 +213,8 @@ Phase 1 - In Development
   stage with per-source metadata and clean rerun replacement behavior
 - `audit_corpus.py` is implemented as a read-only raw corpus quality
   analysis stage that writes `data/corpus/audit_report.json`
+- `normalize_corpus.py` is implemented as a deterministic provenance-
+  preserving cleanup stage that writes `data/corpus/normalized.jsonl`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only

@@ -1,6 +1,59 @@
 # RedLib — Progress Log
 
 ## 2026-06-28
+Implemented the third staged corpus-build script: `normalize_corpus.py`.
+
+Issue:
+- RedLib had acquisition and audit stages, but it still lacked the
+  deterministic transformation step that turns raw heterogeneous
+  snapshots into a clean, provenance-linked corpus for downstream
+  taxonomy and ingestion work.
+- Raw datasets use different prompt-bearing field names, and relying on
+  heuristic field detection at normalization time would make downstream
+  behavior brittle and non-deterministic.
+
+Change:
+- Added a new `normalize_corpus.py` that reads `data/corpus/raw/`,
+  optionally loads `data/corpus/audit_report.json` as an engineering
+  reference, and writes `data/corpus/normalized.jsonl`.
+- Implemented explicit file-level prompt-field mappings for the current
+  fetched sources instead of choosing fields heuristically at runtime:
+  TrustAIRLab -> `prompt`, rubend18 -> `Prompt`,
+  jackhhao -> `prompt`, and HarmBench HumanJailbreaks -> `Behavior`.
+- Added conservative mechanical cleanup only:
+  HTML entity decoding, line-ending normalization, invalid control
+  character removal, trailing-horizontal-whitespace cleanup, repeated
+  blank-line reduction, conservative internal repeated-space collapse,
+  and final trim.
+- Preserved provenance on every normalized record through:
+  `source`, `source_file`, `source_row`, and a deterministic
+  `prompt_id`.
+- Preserved the original parsed raw record under `raw_fields` so later
+  stages can trace every normalized prompt back to its source row
+  without reopening normalization logic.
+- Kept the stage strictly non-LLM, non-taxonomic, non-classifying, and
+  non-ingesting.
+
+Why this implementation was needed:
+- Normalization is where RedLib needs a stable prompt text surface for
+  later corpus-wide analysis, but it must do that without paraphrasing
+  or altering semantic meaning.
+- Explicit mappings prevent audit heuristics from silently becoming
+  production field-selection rules.
+- Stable provenance metadata and deterministic IDs make later taxonomy,
+  classification, and embedding work traceable and reproducible across
+  reruns.
+
+Verification:
+- Confirmed the implementation reads only raw JSONL snapshots, writes
+  only `data/corpus/normalized.jsonl`, and does not create taxonomy,
+  classified, or Qdrant artifacts.
+- Attempted live script verification, but this shell session still does
+  not have a usable Python interpreter available, so runtime execution
+  could not be completed here.
+
+---
+## 2026-06-28
 Implemented the second staged corpus-build script: `audit_corpus.py`.
 
 Issue:
