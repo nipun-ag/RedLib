@@ -41,6 +41,60 @@ Result:
   sessions.
 
 ---
+
+## 2026-06-28
+Implemented the first staged corpus-build script: `fetch_corpus.py`.
+
+Issue:
+- The staged corpus pipeline was documented across `README.md`,
+  `AGENTS.md`, and `docs/ARCHITECTURE.md`, but the actual first-stage
+  acquisition script did not exist yet.
+- The older dataset-loading path in `data_loader.py` mixed in
+  downstream assumptions such as prompt-field extraction, filtering, and
+  deduplication, which do not belong in the raw snapshot stage.
+
+Change:
+- Added a new `fetch_corpus.py` with an explicit dataset registry for
+  the current HuggingFace sources:
+  `TrustAIRLab/in-the-wild-jailbreak-prompts`,
+  `rubend18/ChatGPT-Jailbreak-Prompts`,
+  `jackhhao/jailbreak-classification`, and `swiss-ai/harmbench`.
+- Implemented acquisition-only snapshotting into `data/corpus/raw/`,
+  with one source-specific folder per dataset and JSONL artifacts per
+  configured split/config.
+- Preserved raw record shape by writing fetched records directly as
+  JSONL rows without prompt extraction, cleaning, normalization,
+  filtering, deduplication, or classification.
+- Added per-source `fetch_metadata.json` files that record source name,
+  dataset identifier, fetch timestamp, split/config, output filename,
+  and record counts.
+- Made the script safely rerunnable by fetching into
+  `data/corpus/raw_staging/` first, then replacing the canonical
+  `data/corpus/raw/` snapshot only after a successful full fetch.
+- Added optional `HUGGINGFACE_TOKEN` support through the HuggingFace
+  datasets client without making authentication mandatory for public
+  sources.
+
+Why this implementation was needed:
+- RedLib's documented corpus workflow starts with reproducible local
+  acquisition. Without a real fetch stage, there was no canonical raw
+  corpus snapshot for later audit and normalization steps to inspect.
+- Keeping raw source data untouched at this stage preserves upstream
+  schema quirks and quality issues for `audit_corpus.py`, which is the
+  correct place to inspect them.
+- Atomic replacement-on-success avoids mixing old and new source files
+  during reruns while still maintaining the single canonical raw corpus
+  layout RedLib expects.
+
+Verification:
+- Confirmed the new implementation is isolated to `fetch_corpus.py` and
+  does not touch retrieval, embeddings, Qdrant, Cohere, Anthropic, or
+  LlamaIndex pipeline code.
+- Attempted to run a syntax check and a network-free smoke test, but
+  this shell session does not currently have a usable Python interpreter
+  available, so live execution could not be completed here.
+
+---
 ## 2026-06-28
 Redesigned the documented corpus architecture around a staged local
 pipeline.

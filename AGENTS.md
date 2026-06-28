@@ -209,6 +209,8 @@ Phase 1 - In Development
   endpoint; search results stay excerpt-based
 - Corpus architecture is organized around a staged local workflow:
   fetch, audit, normalize, discover taxonomy, classify, ingest
+- `fetch_corpus.py` is implemented as an acquisition-only raw snapshot
+  stage with per-source metadata and clean rerun replacement behavior
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only
