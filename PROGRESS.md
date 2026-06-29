@@ -1,6 +1,65 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Refactored taxonomy discovery into deterministic iterative proposal
+generation and renamed the artifact to `proposed_taxonomy.json`.
+
+Issue:
+- The first `discover_taxonomy.py` implementation used one sampled pass
+  to propose categories, which left too much weight on a single batch of
+  evidence and did not expose a transparent saturation rule.
+- The old artifact name, `taxonomy_candidates.json`, also under-described
+  the stage boundary: this output is a proposal for human review, not an
+  approved taxonomy and not a corpus-wide classification.
+
+Change:
+- Refactored `discover_taxonomy.py` into deterministic iterative
+  taxonomy discovery with:
+  source-aware allocations,
+  stratified sampling by `source`, `source_file`, and prompt-length
+  bucket,
+  unseen-record rounds,
+  configurable max iterations,
+  and simple saturation detection based on consecutive rounds with no
+  meaningful new categories.
+- Changed the active output artifact from
+  `data/corpus/taxonomy_candidates.json` to
+  `data/corpus/proposed_taxonomy.json`.
+- Updated the LLM interaction so later rounds receive existing category
+  context and can either strengthen those categories or propose
+  genuinely new ones.
+- Kept numeric evidence grounded in code:
+  support counts and source distributions are computed from cited sample
+  IDs rather than accepted from model-generated numbers.
+- Expanded the output shape to include:
+  sampling strategy,
+  saturation status,
+  iteration history,
+  analyzed sample count,
+  and final proposed categories for review.
+- Updated `docs/ARCHITECTURE.md` and `AGENTS.md` to reflect the new
+  artifact name and iterative saturation-based discovery design.
+
+Why this implementation was needed:
+- Taxonomy discovery should converge across rounds of corpus evidence,
+  not hinge on one sample window.
+- Deterministic stratified rounds make the proposal more reproducible
+  and reduce the chance that WildJailbreak or another large source
+  dominates the taxonomy prematurely.
+- Renaming the artifact to `proposed_taxonomy.json` makes the review
+  boundary explicit: this file is a proposal awaiting human approval.
+
+Verification:
+- Confirmed the refactor remains proposal-only:
+  it reads `normalized.jsonl`, writes `proposed_taxonomy.json`, and does
+  not classify the full corpus or create ingestion artifacts.
+- Live runtime verification was still blocked in-session because the
+  current shell does not have a usable Python interpreter wired up, so
+  verification was limited to code-path and artifact-shape review here.
+
+---
+
+## 2026-06-29
 Implemented `discover_taxonomy.py` as the taxonomy discovery stage of
 the corpus pipeline.
 

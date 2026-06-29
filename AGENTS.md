@@ -57,7 +57,7 @@ redlib/
 |     |- canonical/      # Canonical JSONL records with preserved provenance
 |     |- audit_report.json
 |     |- normalized.jsonl
-|     |- taxonomy_candidates.json
+|     |- proposed_taxonomy.json
 |     `- classified.jsonl
 |- frontend/             # Static frontend assets
 |  |- index.html         # Landing page with disclaimer gate
@@ -226,8 +226,8 @@ Phase 1 - In Development
   preserving cleanup stage over canonical JSONL that writes
   `data/corpus/normalized.jsonl`
 - `discover_taxonomy.py` is implemented as an LLM-assisted,
-  source-aware sampling stage that writes human-review taxonomy
-  candidates to `data/corpus/taxonomy_candidates.json`
+  source-aware, stratified iterative stage that writes a human-review
+  taxonomy proposal to `data/corpus/proposed_taxonomy.json`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only

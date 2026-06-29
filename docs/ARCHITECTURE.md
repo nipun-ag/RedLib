@@ -47,7 +47,7 @@ redlib/
 |     |- canonical/        # Canonical JSONL records with full provenance
 |     |- audit_report.json # Structured corpus quality report
 |     |- normalized.jsonl  # Deterministically normalized corpus
-|     |- taxonomy_candidates.json
+|     |- proposed_taxonomy.json # Iterative human-review taxonomy proposal
 |     `- classified.jsonl  # Final corpus handed to ingestion
 |- frontend/               # Static frontend assets
 |  |- index.html           # Landing page
@@ -128,13 +128,16 @@ normalized.jsonl
 │
 ▼
 discover_taxonomy.py
-│      Analyze the normalized corpus to discover natural prompt families.
-│      Produce candidate attack taxonomies based on the data itself
-│      rather than predefined labels.
+│      Analyze the normalized corpus in deterministic source-aware rounds.
+│      Use stratified sampling and iterative LLM-assisted discovery.
+│      Continue until saturation or max iterations.
+│      Produce a proposed attack taxonomy for human review rather than
+│      a final corpus-wide classification.
 │
 ▼
-taxonomy_candidates.json
-│      Human-reviewed taxonomy proposal.
+proposed_taxonomy.json
+│      Human-review taxonomy proposal with iteration history,
+│      saturation status, and code-computed evidence counts.
 │
 ▼
 classify_corpus.py
@@ -182,6 +185,10 @@ Qdrant
   or completions to decide which records belong in the corpus.
 - `discover_taxonomy.py` exists so RedLib's labels emerge from the data
   instead of being permanently hardcoded up front.
+- Taxonomy discovery is iterative rather than one-pass: deterministic
+  code controls source-aware stratified sampling, iteration count,
+  saturation detection, and evidence accounting while the LLM proposes
+  or refines candidate families from excerpts.
 - Human review exists between discovery and classification so the
   taxonomy reflects research judgment, not only automated clustering.
 - `classify_corpus.py` exists so taxonomy application is consistent,
@@ -234,8 +241,11 @@ Qdrant
   RedLib is a jailbreak-prompt corpus, not a corpus of original
   non-jailbreak prompts.
 
-### `taxonomy_candidates.json`
-- Candidate prompt-family proposal derived from the normalized corpus
+### `proposed_taxonomy.json`
+- Iterative taxonomy proposal derived from the normalized corpus
+- Records sampling strategy, iteration history, and saturation status
+- Uses code-computed support counts and source distribution from cited
+  analyzed samples rather than model-invented numbers
 - Intended for human review before it becomes operational taxonomy
 
 ### `classified.jsonl`
