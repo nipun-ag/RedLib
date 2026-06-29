@@ -1,6 +1,50 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Clarified normalization’s documented responsibility around field
+mappings and corpus scope.
+
+Issue:
+- The architecture documentation correctly described normalization as a
+  deterministic cleanup stage, but it did not clearly separate
+  dataset-specific field mapping from normalization behavior itself.
+- That ambiguity mattered most for datasets like WildJailbreak, where
+  multiple prompt variants exist in one record and RedLib intentionally
+  scopes the corpus to only one of them.
+
+Change:
+- Updated `docs/ARCHITECTURE.md` to state explicitly that source/file
+  prompt-field mappings are corpus-design decisions, not semantic
+  filtering logic inside `normalize_corpus.py`.
+- Documented that normalization only performs deterministic cleanup on
+  the already-mapped field and never filters records by labels,
+  metadata values, split semantics, or completion text.
+- Added an explicit WildJailbreak note:
+  RedLib v1 intentionally maps that dataset to the `adversarial` field,
+  and `vanilla` is excluded because RedLib is a jailbreak-prompt corpus
+  rather than a corpus of original prompts.
+- Clarified that rows with empty mapped fields are skipped for a
+  structural reason only: there is no text in the configured field to
+  normalize.
+
+Why this clarification was needed:
+- The recent WildJailbreak investigation showed that large skip counts
+  can result from an intentional corpus-scope mapping without any
+  semantic filtering code being present.
+- Making that distinction explicit helps future contributors reason
+  correctly about whether a behavior belongs to corpus design,
+  normalization, or a later classification stage.
+
+Verification:
+- Confirmed the documentation now matches current code behavior in
+  `normalize_corpus.py`: explicit per-source/per-file field mappings
+  select the field first, then deterministic cleanup runs on that field
+  only.
+- No Python or pipeline behavior changed.
+
+---
+
+## 2026-06-29
 Introduced a dedicated canonical source-conversion stage into the
 corpus pipeline.
 

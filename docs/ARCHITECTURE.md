@@ -114,11 +114,13 @@ audit_report.json
 │
 ▼
 normalize_corpus.py
-│      Deterministically normalize prompt text selected from canonical records.
+│      Deterministically normalize prompt text from an explicitly mapped field.
+│      Field mappings define corpus scope before cleanup begins.
 │      Decode HTML entities, normalize whitespace,
 │      remove invalid control characters,
 │      standardize formatting,
 │      while preserving semantic meaning.
+│      Never perform semantic filtering.
 │
 ▼
 normalized.jsonl
@@ -170,8 +172,14 @@ Qdrant
   prompt or applying any cleanup rules.
 - `audit_corpus.py` exists so quality problems are measured before
   cleanup rules are chosen, rather than hidden by eager mutation.
+- Dataset-specific prompt-field mappings are corpus-design decisions:
+  they decide which variant of a source record belongs inside RedLib's
+  jailbreak corpus before normalization begins.
 - `normalize_corpus.py` exists so ingestion receives a stable prompt
-  format and corpus cleanup stays deterministic.
+  format and corpus cleanup stays deterministic after that field has
+  already been selected.
+- Normalization does not inspect labels, metadata values, split names,
+  or completions to decide which records belong in the corpus.
 - `discover_taxonomy.py` exists so RedLib's labels emerge from the data
   instead of being permanently hardcoded up front.
 - Human review exists between discovery and classification so the
@@ -205,6 +213,26 @@ Qdrant
 - Deterministically cleaned prompt records
 - Consistent input format for taxonomy discovery
 - Free of source-specific encoding and formatting noise
+- Built from explicit source/file field mappings rather than heuristic
+  or semantic filtering
+
+### Field Mapping And Corpus Scope
+- `normalize_corpus.py` uses explicit per-source, per-file field
+  mappings to choose the prompt-bearing field before structural cleanup.
+- Those mappings are part of RedLib's corpus design, not a semantic
+  filtering algorithm inside normalization.
+- After a field is selected, normalization only performs deterministic
+  cleanup on that field and writes a normalized record when the cleaned
+  text is non-empty.
+- If the mapped field is empty, the record is skipped for a structural
+  reason: there is no prompt text in the configured field to normalize.
+- This is distinct from semantic filtering. The stage does not keep or
+  drop rows based on harmful/benign labels, metadata values, split
+  semantics, or completion text.
+- RedLib v1 intentionally maps WildJailbreak to the `adversarial`
+  prompt field. Its `vanilla` field is excluded by corpus scope because
+  RedLib is a jailbreak-prompt corpus, not a corpus of original
+  non-jailbreak prompts.
 
 ### `taxonomy_candidates.json`
 - Candidate prompt-family proposal derived from the normalized corpus
