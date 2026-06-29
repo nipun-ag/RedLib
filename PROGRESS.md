@@ -1,6 +1,62 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Implemented `discover_taxonomy.py` as the taxonomy discovery stage of
+the corpus pipeline.
+
+Issue:
+- RedLib's staged corpus workflow already had acquisition, conversion,
+  audit, and normalization, but it still lacked the proposal stage that
+  turns a normalized jailbreak corpus into a human-review taxonomy
+  candidate set.
+- Discovering taxonomy across the full normalized corpus directly would
+  overfit to dominant sources, send too much text to the LLM, and blur
+  the line between taxonomy proposal and final corpus-wide
+  classification.
+
+Change:
+- Added a new `discover_taxonomy.py` that reads
+  `data/corpus/normalized.jsonl` and writes
+  `data/corpus/taxonomy_candidates.json`.
+- Implemented deterministic source-aware sampling using stable-hash
+  ordering, per-source minimums, and per-source caps so smaller sources
+  still influence taxonomy discovery while large sources do not dominate
+  the analysis prompt.
+- Limited LLM input to short excerpts from sampled normalized prompts
+  rather than full prompt reproduction.
+- Used Anthropic Haiku to propose candidate jailbreak technique
+  families, descriptions, distinguishing traits, supporting sample IDs,
+  and open questions for human review.
+- Added post-processing that validates returned sample IDs and computes
+  support counts plus source distribution from the analyzed sample
+  instead of trusting the model to invent those numbers.
+- Kept the stage proposal-only:
+  no raw/canonical/normalized mutation, no classified corpus creation,
+  no Qdrant writes, and no full-corpus classification.
+
+Why this implementation was needed:
+- RedLib's taxonomy is meant to emerge from the corpus before it is
+  approved and applied. That requires an explicit discovery stage with
+  its own artifact and review boundary.
+- Deterministic, source-aware sampling keeps taxonomy discovery
+  reproducible and helps prevent WildJailbreak or any other large source
+  from overwhelming the proposal.
+- Short excerpts preserve enough technique signal for LLM analysis
+  without turning taxonomy discovery into a full prompt reproduction
+  step.
+
+Verification:
+- Confirmed the implementation reads only `normalized.jsonl` and writes
+  only `taxonomy_candidates.json`.
+- Confirmed the output is structured for human review and does not
+  create classified or ingestion artifacts.
+- Runtime execution still depends on a working local Python interpreter
+  plus Anthropic credentials, so in-session verification was limited to
+  code-path review rather than a live LLM run here.
+
+---
+
+## 2026-06-29
 Clarified normalization’s documented responsibility around field
 mappings and corpus scope.
 

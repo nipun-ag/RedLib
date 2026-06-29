@@ -225,6 +225,9 @@ Phase 1 - In Development
 - `normalize_corpus.py` is implemented as a deterministic provenance-
   preserving cleanup stage over canonical JSONL that writes
   `data/corpus/normalized.jsonl`
+- `discover_taxonomy.py` is implemented as an LLM-assisted,
+  source-aware sampling stage that writes human-review taxonomy
+  candidates to `data/corpus/taxonomy_candidates.json`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only
