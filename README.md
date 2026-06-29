@@ -41,16 +41,19 @@ At a high level, the corpus pipeline is:
 
 1. `fetch_corpus.py` snapshots public datasets into local raw corpus
    storage under `data/corpus/raw/`.
-2. `audit_corpus.py` evaluates raw corpus quality without modifying the
-   source data.
-3. `normalize_corpus.py` produces a deterministic, ingestion-ready
-   normalized corpus.
-4. `discover_taxonomy.py` derives candidate prompt families from the
+2. `convert_sources.py` converts supported raw source files into a
+   canonical JSONL corpus under `data/corpus/canonical/` without
+   changing their meaning or deciding which field is the prompt.
+3. `audit_corpus.py` evaluates canonical corpus quality without
+   modifying the preserved source data.
+4. `normalize_corpus.py` produces a deterministic, ingestion-ready
+   normalized corpus from the canonical JSONL records.
+5. `discover_taxonomy.py` derives candidate prompt families from the
    normalized data.
-5. Human review approves the taxonomy proposal.
-6. `classify_corpus.py` applies the approved taxonomy across the full
+6. Human review approves the taxonomy proposal.
+7. `classify_corpus.py` applies the approved taxonomy across the full
    corpus.
-7. `ingest.py` embeds only the finalized classified corpus and writes it
+8. `ingest.py` embeds only the finalized classified corpus and writes it
    to Qdrant.
 
 This design keeps raw source data untouched, makes the corpus
@@ -134,8 +137,9 @@ for API requests.
 ## Repository Guide
 
 - `fetch_corpus.py`: snapshot public datasets into local raw corpus storage
-- `audit_corpus.py`: analyze raw corpus quality without modifying source data
-- `normalize_corpus.py`: deterministically normalize prompts into a stable corpus format
+- `convert_sources.py`: convert raw JSONL and CSV source files into canonical JSONL records with provenance
+- `audit_corpus.py`: analyze canonical corpus quality without modifying source data
+- `normalize_corpus.py`: deterministically normalize prompts from canonical source records into a stable corpus format
 - `discover_taxonomy.py`: derive candidate attack families from the normalized corpus
 - `classify_corpus.py`: apply the approved taxonomy across the corpus
 - `ingest.py`: embed the finalized classified corpus into Qdrant

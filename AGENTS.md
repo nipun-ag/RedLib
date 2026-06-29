@@ -41,8 +41,9 @@ redlib/
 |- app.py                # FastAPI app, all API routes
 |- rag.py                # LlamaIndex query pipeline (entry point)
 |- fetch_corpus.py       # Snapshot public datasets into local raw corpus storage
-|- audit_corpus.py       # Analyze raw corpus quality without modifying source data
-|- normalize_corpus.py   # Deterministically normalize prompts into a stable corpus format
+|- convert_sources.py    # Convert raw source formats into canonical JSONL records
+|- audit_corpus.py       # Analyze canonical corpus quality without modifying source data
+|- normalize_corpus.py   # Deterministically normalize prompts from canonical source records
 |- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
 |- classify_corpus.py    # Apply the approved taxonomy across the finalized corpus
 |- ingest.py             # Embed the classified corpus into Qdrant
@@ -53,6 +54,7 @@ redlib/
 |- data/
 |  `- corpus/
 |     |- raw/            # Immutable source dataset snapshots
+|     |- canonical/      # Canonical JSONL records with preserved provenance
 |     |- audit_report.json
 |     |- normalized.jsonl
 |     |- taxonomy_candidates.json
@@ -100,15 +102,17 @@ Read before touching any retrieval file:
 
 Current corpus pipeline:
 1. `fetch_corpus.py` snapshots public datasets into `data/corpus/raw/`
-2. `audit_corpus.py` detects quality issues without changing the raw corpus
-3. `normalize_corpus.py` produces deterministic normalized prompt records
-4. `discover_taxonomy.py` proposes natural prompt families from the corpus itself
-5. Human review approves the taxonomy proposal
-6. `classify_corpus.py` applies the approved taxonomy across the corpus
-7. `ingest.py` embeds only the finalized `classified.jsonl` corpus into Qdrant
+2. `convert_sources.py` converts supported raw source files into `data/corpus/canonical/`
+3. `audit_corpus.py` detects quality issues without changing the canonical corpus
+4. `normalize_corpus.py` produces deterministic normalized prompt records
+5. `discover_taxonomy.py` proposes natural prompt families from the corpus itself
+6. Human review approves the taxonomy proposal
+7. `classify_corpus.py` applies the approved taxonomy across the corpus
+8. `ingest.py` embeds only the finalized `classified.jsonl` corpus into Qdrant
 
 Each corpus-stage script has exactly one responsibility:
 - `fetch_corpus.py`: acquisition and local snapshotting only
+- `convert_sources.py`: structural source conversion only
 - `audit_corpus.py`: quality analysis only
 - `normalize_corpus.py`: deterministic normalization only
 - `discover_taxonomy.py`: taxonomy discovery only
@@ -140,10 +144,11 @@ Each corpus-stage script has exactly one responsibility:
 
 ### Adding a new dataset source
 1. Extend `fetch_corpus.py` to snapshot the new source into raw corpus storage
-2. Re-run corpus audit and normalization
-3. Re-run taxonomy discovery and classification if the new source changes the corpus mix
-4. Re-run `ingest.py` after the finalized classified corpus is ready
-5. Update corpus notes in `ARCHITECTURE.md`
+2. Re-run `convert_sources.py` to refresh the canonical corpus
+3. Re-run corpus audit and normalization
+4. Re-run taxonomy discovery and classification if the new source changes the corpus mix
+5. Re-run `ingest.py` after the finalized classified corpus is ready
+6. Update corpus notes in `ARCHITECTURE.md`
 
 ### Changing corpus preparation behavior
 1. Read `ARCHITECTURE.md` corpus section first
@@ -164,9 +169,10 @@ Each corpus-stage script has exactly one responsibility:
 
 ### Debugging corpus quality issues
 1. Inspect the affected raw snapshot in `data/corpus/raw/`
-2. Check `audit_report.json` for corpus-wide patterns
-3. Inspect `normalize_corpus.py` for deterministic cleanup rules
-4. Confirm whether the issue belongs to normalization, taxonomy, or ingestion
+2. Inspect the converted canonical file in `data/corpus/canonical/`
+3. Check `audit_report.json` for corpus-wide patterns
+4. Inspect `normalize_corpus.py` for deterministic cleanup rules
+5. Confirm whether the issue belongs to conversion, normalization, taxonomy, or ingestion
 
 ### Debugging bad retrieval results
 1. Inspect Cohere rerank scores in logs
@@ -208,14 +214,17 @@ Phase 1 - In Development
 - Full prompt inspection is lazy-loaded through a dedicated backend
   endpoint; search results stay excerpt-based
 - Corpus architecture is organized around a staged local workflow:
-  fetch, audit, normalize, discover taxonomy, classify, ingest
+  fetch, convert, audit, normalize, discover taxonomy, classify, ingest
 - `fetch_corpus.py` is implemented as an acquisition-only raw snapshot
   stage with a multi-platform source registry, per-source metadata,
   isolated source-failure reporting, and gated canonical replacement
-- `audit_corpus.py` is implemented as a read-only raw corpus quality
-  analysis stage that writes `data/corpus/audit_report.json`
+- `convert_sources.py` is implemented as a structural conversion stage
+  that preserves all source fields and provenance in canonical JSONL
+- `audit_corpus.py` is implemented as a read-only canonical corpus
+  quality analysis stage that writes `data/corpus/audit_report.json`
 - `normalize_corpus.py` is implemented as a deterministic provenance-
-  preserving cleanup stage that writes `data/corpus/normalized.jsonl`
+  preserving cleanup stage over canonical JSONL that writes
+  `data/corpus/normalized.jsonl`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only

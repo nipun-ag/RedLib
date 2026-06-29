@@ -31,8 +31,9 @@ redlib/
 |- app.py                  # FastAPI app entry point. All API routes.
 |- rag.py                  # Assembles the full LlamaIndex query pipeline.
 |- fetch_corpus.py         # Snapshots public datasets and raw source files into local corpus storage.
-|- audit_corpus.py         # Analyzes raw corpus quality without modifying it.
-|- normalize_corpus.py     # Deterministically normalizes prompt records.
+|- convert_sources.py      # Converts raw source formats into canonical JSONL records.
+|- audit_corpus.py         # Analyzes canonical corpus quality without modifying it.
+|- normalize_corpus.py     # Deterministically normalizes prompt records from canonical JSONL.
 |- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
 |- classify_corpus.py      # Applies the approved taxonomy across the corpus.
 |- ingest.py               # Embeds finalized classified corpus into Qdrant.
@@ -43,6 +44,7 @@ redlib/
 |- data/
 |  `- corpus/
 |     |- raw/              # Immutable source dataset snapshots
+|     |- canonical/        # Canonical JSONL records with full provenance
 |     |- audit_report.json # Structured corpus quality report
 |     |- normalized.jsonl  # Deterministically normalized corpus
 |     |- taxonomy_candidates.json
@@ -84,14 +86,26 @@ Public Datasets
 │
 ▼
 data/corpus/raw/
-│      Exact copies of every source dataset.
-│      No cleaning or modification.
+│      Exact copies of every source dataset in their original formats.
+│      No parsing, cleaning, or modification.
+│
+▼
+convert_sources.py
+│      Convert supported raw source formats into canonical JSONL.
+│      Preserve every original field and full provenance.
+│      Perform structural conversion only.
+│      No prompt extraction, no cleaning, and no semantic changes.
+│
+▼
+data/corpus/canonical/
+│      One canonical JSONL input format for every downstream corpus stage.
+│      Each record stores source provenance plus the untouched source fields.
 │
 ▼
 audit_corpus.py
-│      Analyze corpus quality.
-│      Detect placeholders, HTML entities, duplicates, malformed prompts,
-│      truncation, encoding issues, and dataset-specific artifacts.
+│      Analyze canonical corpus quality.
+│      Detect placeholders, HTML entities, duplicates, malformed lines,
+│      truncation, encoding issues, and schema variation.
 │      Never modify the data.
 │
 ▼
@@ -100,7 +114,7 @@ audit_report.json
 │
 ▼
 normalize_corpus.py
-│      Deterministically normalize prompts into a consistent format.
+│      Deterministically normalize prompt text selected from canonical records.
 │      Decode HTML entities, normalize whitespace,
 │      remove invalid control characters,
 │      standardize formatting,
@@ -148,6 +162,12 @@ Qdrant
 - Canonical replacement of `data/corpus/raw/` happens only when all
   required sources succeed; otherwise the previous canonical raw corpus
   remains in place and the run writes a failure summary instead.
+- `convert_sources.py` exists so downstream stages never need to know
+  whether an upstream source arrived as JSONL, CSV, or another platform-
+  native format.
+- The conversion stage is structural only: it preserves every source
+  field and provenance without deciding which field is the jailbreak
+  prompt or applying any cleanup rules.
 - `audit_corpus.py` exists so quality problems are measured before
   cleanup rules are chosen, rather than hidden by eager mutation.
 - `normalize_corpus.py` exists so ingestion receives a stable prompt
@@ -170,8 +190,14 @@ Qdrant
 - Source of truth for reproducible corpus builds
 - Never edited in place
 
+### `data/corpus/canonical/`
+- Canonical JSONL conversion of every supported raw source file
+- Downstream input for audit and normalization
+- Preserves `source`, `source_file`, `source_row`, and all original
+  source fields under `fields`
+
 ### `audit_report.json`
-- Structured report of raw-corpus quality issues
+- Structured report of canonical-corpus quality issues
 - Used to drive engineering decisions about normalization and source handling
 - Does not contain cleanup logic
 
@@ -409,6 +435,8 @@ Deployment is split:
 - Changing the embedding model invalidates stored vectors and requires
   re-ingestion.
 - Raw corpus snapshots are immutable once captured.
+- Downstream stages consume canonical JSONL rather than platform-native
+  raw source files.
 - Normalization must preserve semantic meaning while remaining deterministic.
 - Taxonomy discovery and taxonomy application must stay separate stages.
 - Ingestion consumes only finalized classified corpus artifacts.

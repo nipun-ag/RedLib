@@ -11,7 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CORPUS_ROOT = Path("data") / "corpus"
-RAW_ROOT = CORPUS_ROOT / "raw"
+CANONICAL_ROOT = CORPUS_ROOT / "canonical"
 AUDIT_REPORT_PATH = CORPUS_ROOT / "audit_report.json"
 
 SHORT_TEXT_THRESHOLD = 20
@@ -82,12 +82,21 @@ def schema_variant_label(record: Any) -> tuple[str, ...]:
 
 
 def source_name_for_file(file_path: Path) -> str:
-    relative_path = file_path.relative_to(RAW_ROOT)
+    relative_path = file_path.relative_to(CANONICAL_ROOT)
     return relative_path.parts[0]
 
 
 def relative_posix_path(file_path: Path) -> str:
-    return file_path.relative_to(RAW_ROOT).as_posix()
+    return file_path.relative_to(CANONICAL_ROOT).as_posix()
+
+
+def provenance_label(canonical_record: dict[str, Any], file_path: Path, line_number: int) -> str:
+    source_name = canonical_record.get("source")
+    source_file = canonical_record.get("source_file")
+    source_row = canonical_record.get("source_row")
+    if source_name and source_file and isinstance(source_row, int):
+        return f"{source_name}/{source_file}:{source_row}"
+    return f"{relative_posix_path(file_path)}:{line_number}"
 
 
 @dataclass
@@ -210,7 +219,7 @@ class ScopeAggregator:
         file_path: Path,
         line_number: int,
         line_text: str,
-        error: json.JSONDecodeError,
+        error_message: str,
     ) -> None:
         self.malformed_jsonl_lines += 1
         if len(self.malformed_line_samples) >= MAX_MALFORMED_LINE_SAMPLES:
@@ -219,22 +228,22 @@ class ScopeAggregator:
             {
                 "file": relative_posix_path(file_path),
                 "line_number": line_number,
-                "error": error.msg,
+                "error": error_message,
                 "line_excerpt": truncate_text(line_text.strip(), 120),
             }
         )
 
-    def observe_record(self, record: Any, location: str) -> None:
+    def observe_record(self, record_fields: Any, location: str) -> None:
         self.total_records += 1
 
-        if is_empty_record(record):
+        if is_empty_record(record_fields):
             self.empty_records += 1
-        if not isinstance(record, dict):
+        if not isinstance(record_fields, dict):
             self.non_object_records += 1
 
-        self.schema_variants[schema_variant_label(record)] += 1
+        self.schema_variants[schema_variant_label(record_fields)] += 1
 
-        canonical_record = canonical_json(record)
+        canonical_record = canonical_json(record_fields)
         record_hash = stable_hash(canonical_record)
         duplicate_sample = self.raw_record_duplicates.setdefault(
             record_hash,
@@ -246,10 +255,10 @@ class ScopeAggregator:
         )
         duplicate_sample.count += 1
 
-        if not isinstance(record, dict):
+        if not isinstance(record_fields, dict):
             return
 
-        for field_name, value in record.items():
+        for field_name, value in record_fields.items():
             stats = self.field_stats.setdefault(field_name, FieldStats())
             stats.update(value)
 
@@ -409,11 +418,11 @@ class ScopeAggregator:
         }
 
 
-def list_raw_jsonl_files() -> list[Path]:
-    return sorted(RAW_ROOT.glob("*/*.jsonl"))
+def list_canonical_jsonl_files() -> list[Path]:
+    return sorted(CANONICAL_ROOT.glob("*/*.jsonl"))
 
 
-def audit_jsonl_file(
+def audit_canonical_jsonl_file(
     file_path: Path,
     corpus_scope: ScopeAggregator,
     source_scope: ScopeAggregator,
@@ -423,39 +432,54 @@ def audit_jsonl_file(
         for line_number, line in enumerate(source_file, start=1):
             stripped_line = line.strip()
             if not stripped_line:
-                error = json.JSONDecodeError("Blank line", line, 0)
-                corpus_scope.observe_malformed_line(file_path, line_number, line, error)
-                source_scope.observe_malformed_line(file_path, line_number, line, error)
-                file_scope.observe_malformed_line(file_path, line_number, line, error)
+                error_message = "Blank line"
+                corpus_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                source_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                file_scope.observe_malformed_line(file_path, line_number, line, error_message)
                 continue
 
             try:
-                record = json.loads(line)
+                canonical_record = json.loads(line)
             except json.JSONDecodeError as error:
-                corpus_scope.observe_malformed_line(file_path, line_number, line, error)
-                source_scope.observe_malformed_line(file_path, line_number, line, error)
-                file_scope.observe_malformed_line(file_path, line_number, line, error)
+                corpus_scope.observe_malformed_line(file_path, line_number, line, error.msg)
+                source_scope.observe_malformed_line(file_path, line_number, line, error.msg)
+                file_scope.observe_malformed_line(file_path, line_number, line, error.msg)
                 continue
 
-            location = f"{relative_posix_path(file_path)}:{line_number}"
-            corpus_scope.observe_record(record, location)
-            source_scope.observe_record(record, location)
-            file_scope.observe_record(record, location)
+            if not isinstance(canonical_record, dict):
+                error_message = "Canonical record is not a JSON object"
+                corpus_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                source_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                file_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                continue
+
+            record_fields = canonical_record.get("fields")
+            if not isinstance(record_fields, dict):
+                error_message = "Canonical record fields payload is not a JSON object"
+                corpus_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                source_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                file_scope.observe_malformed_line(file_path, line_number, line, error_message)
+                continue
+
+            location = provenance_label(canonical_record, file_path, line_number)
+            corpus_scope.observe_record(record_fields, location)
+            source_scope.observe_record(record_fields, location)
+            file_scope.observe_record(record_fields, location)
 
 
-def audit_raw_corpus() -> dict[str, Any]:
-    if not RAW_ROOT.exists():
+def audit_canonical_corpus() -> dict[str, Any]:
+    if not CANONICAL_ROOT.exists():
         raise SystemExit(
-            "Raw corpus directory not found at data/corpus/raw/. "
-            "Run fetch_corpus.py before audit_corpus.py."
+            "Canonical corpus directory not found at data/corpus/canonical/. "
+            "Run convert_sources.py before audit_corpus.py."
         )
 
     corpus_scope = ScopeAggregator()
     source_scopes: dict[str, ScopeAggregator] = {}
     file_scopes: dict[str, ScopeAggregator] = {}
 
-    jsonl_files = list_raw_jsonl_files()
-    logger.info("Auditing %s raw JSONL files from %s", len(jsonl_files), RAW_ROOT)
+    jsonl_files = list_canonical_jsonl_files()
+    logger.info("Auditing %s canonical JSONL files from %s", len(jsonl_files), CANONICAL_ROOT)
 
     for file_path in jsonl_files:
         source_name = source_name_for_file(file_path)
@@ -463,7 +487,7 @@ def audit_raw_corpus() -> dict[str, Any]:
         file_key = relative_posix_path(file_path)
         file_scope = file_scopes.setdefault(file_key, ScopeAggregator())
 
-        audit_jsonl_file(
+        audit_canonical_jsonl_file(
             file_path=file_path,
             corpus_scope=corpus_scope,
             source_scope=source_scope,
@@ -495,15 +519,16 @@ def audit_raw_corpus() -> dict[str, Any]:
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "raw_root": str(RAW_ROOT),
+        "canonical_root": str(CANONICAL_ROOT),
         "report_path": str(AUDIT_REPORT_PATH),
-        "report_version": 1,
+        "report_version": 2,
         "analysis_constraints": {
             "raw_data_modified": False,
+            "canonical_data_modified": False,
             "normalized_artifacts_created": False,
             "notes": [
-                "This report is observational only and does not choose a canonical prompt field.",
-                "Likely prompt-bearing fields are inferred statistically from raw string coverage and length.",
+                "This report consumes canonical converted source records, not platform-native raw file formats.",
+                "Likely prompt-bearing fields are inferred statistically from preserved source fields only and do not choose a canonical prompt field.",
                 "Duplicate likely prompt text is limited to inferred candidate fields and may miss semantically equivalent prompts across different field names.",
             ],
         },
@@ -529,7 +554,7 @@ def write_audit_report(report: dict[str, Any]) -> None:
 
 def main() -> int:
     configure_logging()
-    report = audit_raw_corpus()
+    report = audit_canonical_corpus()
     write_audit_report(report)
     logger.info(
         "Wrote corpus audit report for %s sources, %s files, and %s records to %s",

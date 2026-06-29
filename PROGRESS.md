@@ -1,6 +1,59 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Introduced a dedicated canonical source-conversion stage into the
+corpus pipeline.
+
+Issue:
+- The fetch stage now preserves multiple upstream file formats
+  correctly, but that meant downstream stages still had to understand
+  platform-native shapes like JSONL and CSV.
+- That blurred stage boundaries: audit and normalization were starting
+  to inherit source-format concerns that do not belong in quality
+  analysis or deterministic prompt cleanup.
+
+Change:
+- Added a new `convert_sources.py` stage between fetch and audit.
+- Implemented structural conversion from supported raw formats into
+  `data/corpus/canonical/`, with initial support for JSONL and CSV.
+- Defined a canonical converted record shape that preserves:
+  `source`, `source_file`, `source_row`, and every original source field
+  under `fields`.
+- Kept conversion strictly non-semantic:
+  no prompt extraction, no normalization, no taxonomy logic, no
+  deduplication, and no classification.
+- Refactored `audit_corpus.py` to consume only canonical JSONL records
+  from `data/corpus/canonical/` so the audit stage is format-agnostic.
+- Refactored `normalize_corpus.py` to consume only canonical JSONL
+  records, preserve canonical provenance, and keep explicit per-source
+  prompt-field mappings keyed to original source files.
+- Updated `README.md`, `AGENTS.md`, and `docs/ARCHITECTURE.md` so the
+  documented pipeline is now:
+  `fetch -> convert -> audit -> normalize -> discover -> classify -> ingest`.
+
+Why this implementation was needed:
+- RedLib needs one place where platform-native source formats are
+  translated into a stable engineering surface, and that place should be
+  separate from both acquisition and normalization.
+- A canonical structural layer keeps fetch fully source-preserving while
+  letting audit and normalization operate on one consistent record
+  format.
+- This separation makes future source-format additions safer because new
+  parsers can be added to `convert_sources.py` without leaking file-
+  format logic into later corpus stages.
+
+Verification:
+- Confirmed the new design remains stage-pure:
+  fetch preserves original files, conversion preserves fields and
+  provenance, audit remains read-only, and normalization remains the
+  first stage that selects prompt-bearing fields.
+- Runtime verification is still pending because this shell session may
+  not have a usable Python interpreter available; I queued a local
+  command check as the next validation step.
+
+---
+
+## 2026-06-29
 Refactored `fetch_corpus.py` so one failed source no longer aborts the
 entire acquisition run.
 
