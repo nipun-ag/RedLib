@@ -1,6 +1,40 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Increased the default taxonomy discovery round size and made it
+environment-configurable.
+
+Issue:
+- `discover_taxonomy.py` still used a hardcoded
+  `ROUND_SAMPLE_SIZE = 96`, which made the per-round evidence window
+  narrower than intended and required code edits to tune sampling
+  volume.
+
+Change:
+- Replaced the hardcoded taxonomy discovery round size with
+  `REDLIB_TAXONOMY_SAMPLE_SIZE`, defaulting to `500` when the
+  environment variable is unset.
+- Kept the rest of the discovery behavior unchanged:
+  deterministic sampling,
+  source-aware balancing,
+  stratification,
+  and iterative saturation logic still operate the same way.
+
+Why this implementation was needed:
+- A larger default round gives the LLM a broader cross-source sample per
+  iteration without changing the discovery architecture.
+- An environment override makes sample sizing easier to tune for cost,
+  speed, or coverage without modifying source code.
+
+Verification:
+- Confirmed `discover_taxonomy.py` now reads
+  `REDLIB_TAXONOMY_SAMPLE_SIZE` and falls back to `500`.
+- No architecture or pipeline-stage behavior changed beyond the default
+  round size and its configurability.
+
+---
+
+## 2026-06-29
 Refactored taxonomy discovery into deterministic iterative proposal
 generation and renamed the artifact to `proposed_taxonomy.json`.
 
