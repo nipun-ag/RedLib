@@ -1,6 +1,51 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Hardened taxonomy discovery against malformed Claude JSON responses.
+
+Issue:
+- `discover_taxonomy.py` assumed the Anthropic call would always return
+  parseable JSON, so a successful model response could still crash the
+  stage immediately when `json.loads` hit malformed output such as a
+  missing delimiter.
+- The larger requested round size could also look misleading in logs
+  because source caps can reduce the effective per-round sample count
+  well below the configured target.
+
+Change:
+- Added structured-output recovery in `discover_taxonomy.py`:
+  invalid JSON is now logged,
+  the raw response is sent back through a repair prompt,
+  and parsing is retried up to two repair attempts.
+- If all repair attempts fail, the final invalid response is persisted
+  under `data/corpus/taxonomy_debug/` and the script exits with the
+  debug file path for inspection.
+- Added round-level sampling logs that report the requested sample size,
+  actual selected sample count, source count, and effective capped
+  capacity after per-source limits.
+
+Why this implementation was needed:
+- Anthropic request success does not guarantee valid JSON, so the stage
+  needed a recovery path that preserves the current taxonomy algorithm
+  while making structured output more reliable.
+- Persisting unrecoverable responses makes failures inspectable instead
+  of opaque.
+- Clearer sampling logs help explain cases where a configured round size
+  is larger than what source balancing and per-source caps can actually
+  produce.
+
+Verification:
+- Confirmed the round-analysis path now routes model text through a
+  repair-aware parser instead of failing on the first malformed JSON
+  response.
+- Confirmed unrecoverable responses are written to
+  `data/corpus/taxonomy_debug/` before exit.
+- Live runtime verification was still limited in-session because this
+  shell does not currently have a usable Python interpreter available.
+
+---
+
+## 2026-06-29
 Increased the default taxonomy discovery round size and made it
 environment-configurable.
 

@@ -16,6 +16,7 @@ CORPUS_ROOT = Path("data") / "corpus"
 NORMALIZED_PATH = CORPUS_ROOT / "normalized.jsonl"
 PROPOSED_TAXONOMY_PATH = CORPUS_ROOT / "proposed_taxonomy.json"
 PROPOSED_TAXONOMY_STAGING_PATH = CORPUS_ROOT / "proposed_taxonomy_staging.json"
+TAXONOMY_DEBUG_DIR = CORPUS_ROOT / "taxonomy_debug"
 
 MODEL_NAME = os.environ.get("REDLIB_TAXONOMY_MODEL", "claude-haiku-4-5")
 SAMPLING_SEED = "redlib-taxonomy-discovery-v2"
@@ -30,26 +31,9 @@ MAX_EXCERPT_CHARS = 180
 MAX_CITED_SAMPLE_IDS_PER_CATEGORY = 18
 MAX_REPRESENTATIVE_EXCERPTS = 4
 MAX_CATEGORY_COUNT = 16
+JSON_REPAIR_ATTEMPTS = 2
 
-SYSTEM_PROMPT = """You are helping propose a human-reviewed taxonomy for a jailbreak-prompt research corpus.
-
-This is iterative taxonomy discovery, not final classification.
-
-Your task:
-- Review the excerpted prompts for this round.
-- Compare them against any existing candidate categories already discovered.
-- For each round sample, decide whether it strengthens an existing category or supports a genuinely new category.
-- Focus on jailbreak mechanics and interaction patterns, not on the harmful topic domain.
-
-Hard constraints:
-- Do not reproduce full prompts.
-- Do not invent numeric support counts.
-- Do not cite any evidence except the provided sample IDs.
-- Do not use source names, benchmark names, dataset names, or harm domains as taxonomy labels.
-- Return valid JSON only, with no markdown fences and no surrounding commentary.
-
-Return exactly this JSON shape:
-{
+REQUIRED_TAXONOMY_JSON_SHAPE = """{
   "round_summary": "short paragraph",
   "existing_category_matches": [
     {
@@ -69,13 +53,43 @@ Return exactly this JSON shape:
     }
   ],
   "open_questions": ["question", "question"]
-}
+}"""
+
+SYSTEM_PROMPT = f"""You are helping propose a human-reviewed taxonomy for a jailbreak-prompt research corpus.
+
+This is iterative taxonomy discovery, not final classification.
+
+Your task:
+- Review the excerpted prompts for this round.
+- Compare them against any existing candidate categories already discovered.
+- For each round sample, decide whether it strengthens an existing category or supports a genuinely new category.
+- Focus on jailbreak mechanics and interaction patterns, not on the harmful topic domain.
+
+Hard constraints:
+- Do not reproduce full prompts.
+- Do not invent numeric support counts.
+- Do not cite any evidence except the provided sample IDs.
+- Do not use source names, benchmark names, dataset names, or harm domains as taxonomy labels.
+- Return valid JSON only, with no markdown fences and no surrounding commentary.
+
+Return exactly this JSON shape:
+{REQUIRED_TAXONOMY_JSON_SHAPE}
 
 Rules:
 - Propose only genuinely new categories in new_candidate_categories.
 - Prefer broad recurring technique families over narrow one-off themes.
 - If evidence is better explained by an existing category, use existing_category_matches instead of inventing a new one.
 - If categories overlap, say so in review_notes.
+"""
+
+JSON_REPAIR_SYSTEM_PROMPT = f"""You repair malformed JSON responses.
+
+Return only valid JSON with no markdown fences and no explanation.
+Do not change the intended meaning unless a minimal structural fix is required.
+Preserve category names, sample IDs, traits, descriptions, and review notes whenever possible.
+
+The required JSON shape is:
+{REQUIRED_TAXONOMY_JSON_SHAPE}
 """
 
 
@@ -276,6 +290,10 @@ def select_round_samples(
         for source, source_records in sorted(remaining_by_source.items())
     }
     source_allocations = allocate_source_samples(available_by_source)
+    effective_round_capacity = sum(
+        min(count, MAX_SAMPLES_PER_SOURCE_PER_ROUND)
+        for count in available_by_source.values()
+    )
 
     sampled_records: list[NormalizedRecord] = []
     round_source_counts: Counter[str] = Counter()
@@ -324,6 +342,16 @@ def select_round_samples(
                 break
 
     sampled_records = sampled_records[:ROUND_SAMPLE_SIZE]
+    logger.info(
+        "Round %s requested up to %s samples and selected %s from %s unseen records across %s sources; per-source cap=%s, effective capped capacity=%s",
+        iteration_number,
+        ROUND_SAMPLE_SIZE,
+        len(sampled_records),
+        len(remaining_records),
+        len(available_by_source),
+        MAX_SAMPLES_PER_SOURCE_PER_ROUND,
+        effective_round_capacity,
+    )
     samples = [
         SampledRecord(
             sample_id=f"R{iteration_number:02d}S{index:03d}",
@@ -413,6 +441,115 @@ def extract_json_payload(response_text: str) -> dict[str, Any]:
     return payload
 
 
+def write_invalid_response_debug(
+    *,
+    iteration_number: int,
+    response_stage: str,
+    response_text: str,
+    errors: list[str],
+) -> Path:
+    TAXONOMY_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    debug_path = (
+        TAXONOMY_DEBUG_DIR
+        / f"round_{iteration_number:02d}_{response_stage}_{timestamp}.json"
+    )
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "iteration": iteration_number,
+        "model": MODEL_NAME,
+        "response_stage": response_stage,
+        "errors": errors,
+        "raw_response": response_text,
+    }
+    with debug_path.open("w", encoding="utf-8", newline="\n") as debug_file:
+        json.dump(payload, debug_file, indent=2, ensure_ascii=False)
+        debug_file.write("\n")
+    return debug_path
+
+
+def request_json_repair(
+    client: Anthropic,
+    *,
+    iteration_number: int,
+    invalid_response: str,
+    parse_error: str,
+    repair_attempt: int,
+) -> str:
+    logger.info(
+        "Requesting JSON repair attempt %s for taxonomy discovery round %s",
+        repair_attempt,
+        iteration_number,
+    )
+    repair_prompt = (
+        f"Repair the malformed JSON for taxonomy discovery round {iteration_number}.\n\n"
+        f"Parse error:\n{parse_error}\n\n"
+        "Return only valid JSON matching the required schema.\n\n"
+        "Malformed response:\n"
+        f"{invalid_response}"
+    )
+    response = client.messages.create(
+        model=MODEL_NAME,
+        max_tokens=4000,
+        temperature=0,
+        system=JSON_REPAIR_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": repair_prompt}],
+    )
+    return extract_text_content(response)
+
+
+def parse_llm_payload_with_repair(
+    client: Anthropic,
+    *,
+    iteration_number: int,
+    response_text: str,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    current_response_text = response_text
+
+    for attempt_number in range(0, JSON_REPAIR_ATTEMPTS + 1):
+        try:
+            return extract_json_payload(current_response_text)
+        except ValueError as error:
+            error_message = str(error)
+            errors.append(error_message)
+            if attempt_number == 0:
+                logger.warning(
+                    "Taxonomy discovery round %s returned malformed JSON: %s",
+                    iteration_number,
+                    error_message,
+                )
+            else:
+                logger.warning(
+                    "Taxonomy discovery round %s JSON repair attempt %s failed: %s",
+                    iteration_number,
+                    attempt_number,
+                    error_message,
+                )
+
+            if attempt_number >= JSON_REPAIR_ATTEMPTS:
+                debug_path = write_invalid_response_debug(
+                    iteration_number=iteration_number,
+                    response_stage="invalid_json",
+                    response_text=current_response_text,
+                    errors=errors,
+                )
+                raise SystemExit(
+                    "Taxonomy discovery could not recover valid JSON for "
+                    f"round {iteration_number}. Saved debug response to {debug_path}."
+                ) from error
+
+            current_response_text = request_json_repair(
+                client,
+                iteration_number=iteration_number,
+                invalid_response=current_response_text,
+                parse_error=error_message,
+                repair_attempt=attempt_number + 1,
+            )
+
+    raise AssertionError("JSON repair loop exited unexpectedly.")
+
+
 def request_round_analysis(
     client: Anthropic,
     iteration_number: int,
@@ -447,7 +584,11 @@ def request_round_analysis(
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    return extract_json_payload(extract_text_content(response))
+    return parse_llm_payload_with_repair(
+        client,
+        iteration_number=iteration_number,
+        response_text=extract_text_content(response),
+    )
 
 
 def deduplicate_preserve_order(items: list[str]) -> list[str]:
