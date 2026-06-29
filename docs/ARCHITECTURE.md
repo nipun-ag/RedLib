@@ -78,6 +78,9 @@ Public Datasets
 │      Download and locally snapshot every source into the reproducible corpus.
 │      Supports multiple acquisition platforms such as Hugging Face
 │      datasets and raw GitHub-hosted files.
+│      Attempts every configured source, records per-source successes
+│      and failures, and only replaces the canonical raw corpus when
+│      all required sources succeed.
 │
 ▼
 data/corpus/raw/
@@ -140,6 +143,11 @@ Qdrant
 - The fetch stage may pull from multiple source platforms, but every
   source is still snapshotted into the same canonical local raw corpus
   layout before any audit or normalization work begins.
+- Fetch failures are isolated per source so one broken upstream source
+  does not prevent RedLib from observing the rest of the run.
+- Canonical replacement of `data/corpus/raw/` happens only when all
+  required sources succeed; otherwise the previous canonical raw corpus
+  remains in place and the run writes a failure summary instead.
 - `audit_corpus.py` exists so quality problems are measured before
   cleanup rules are chosen, rather than hidden by eager mutation.
 - `normalize_corpus.py` exists so ingestion receives a stable prompt

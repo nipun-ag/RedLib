@@ -1,5 +1,53 @@
 # RedLib — Progress Log
 
+## 2026-06-29
+Refactored `fetch_corpus.py` so one failed source no longer aborts the
+entire acquisition run.
+
+Issue:
+- The multi-platform fetch stage still failed fast on the first source
+  error, which meant one broken dataset or access issue could hide later
+  upstream failures and prevent a full run-level view of corpus health.
+- That behavior also made it harder to preserve RedLib's one-canonical-
+  corpus rule cleanly, because the script could terminate before
+  recording which sources had succeeded and which had failed.
+
+Change:
+- Added per-source failure isolation in `fetch_corpus.py`, so the fetch
+  loop now attempts every configured source even after one source fails.
+- Added a `required` flag to the declarative source registry to support
+  required-vs-optional corpus sources explicitly.
+- Added a run-level summary builder that records each source's status,
+  platform, requiredness, success metadata, or failure details.
+- Added `fetch_run_summary.json` output:
+  successful all-required runs write it into the staged raw corpus so it
+  lands in `data/corpus/raw/` after canonical replacement;
+  failed required runs write it to `data/corpus/fetch_run_summary.json`.
+- Changed replacement policy so `data/corpus/raw/` is replaced only when
+  all required sources succeed.
+- Failed source staging directories are removed from `raw_staging/`
+  before summary finalization so partial source snapshots do not leak
+  into a successful canonical replacement.
+- Successful runs now clear any stale failure summary left in
+  `data/corpus/fetch_run_summary.json`.
+
+Why this implementation was needed:
+- RedLib needs full visibility into upstream breakage without letting an
+  incomplete required fetch silently become the new canonical corpus.
+- Separating source-level failure isolation from corpus-level canonical
+  replacement preserves both resilience and correctness.
+- The run summary makes gated access or remote fetch errors explicit
+  instead of burying them behind one early exception.
+
+Verification:
+- Confirmed the refactor remains acquisition-only and does not add
+  audit, normalization, taxonomy, classification, ingestion, embedding,
+  Qdrant, or LLM behavior.
+- Attempted live runtime verification, but this shell session still does
+  not have a usable Python interpreter and cannot exercise live network
+  fetches here, so execution could not be completed in-session.
+
+---
 ## 2026-06-28
 Expanded `fetch_corpus.py` into a multi-platform acquisition stage and
 extended the RedLib v1 raw corpus registry.

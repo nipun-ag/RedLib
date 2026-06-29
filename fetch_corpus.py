@@ -41,6 +41,7 @@ class GitHubRawSnapshotSpec(SnapshotSpec):
 class SourceSpec:
     source_name: str
     source_type: str
+    required: bool
     snapshots: tuple[SnapshotSpec, ...]
 
 
@@ -58,6 +59,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="trustairlab",
         source_type="huggingface",
+        required=True,
         dataset_id="TrustAIRLab/in-the-wild-jailbreak-prompts",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -75,6 +77,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="rubend18",
         source_type="huggingface",
+        required=True,
         dataset_id="rubend18/ChatGPT-Jailbreak-Prompts",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -86,6 +89,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="jackhhao",
         source_type="huggingface",
+        required=True,
         dataset_id="jackhhao/jailbreak-classification",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -101,6 +105,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="harmbench",
         source_type="huggingface",
+        required=True,
         dataset_id="swiss-ai/harmbench",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -118,6 +123,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="wildjailbreak",
         source_type="huggingface",
+        required=True,
         dataset_id="allenai/wildjailbreak",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -143,6 +149,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="jailbreakbench_behaviors",
         source_type="huggingface",
+        required=True,
         dataset_id="JailbreakBench/JBB-Behaviors",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -155,6 +162,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     GitHubRawSourceSpec(
         source_name="advbench",
         source_type="github_raw",
+        required=True,
         repository="llm-attacks/llm-attacks",
         snapshots=(
             GitHubRawSnapshotSpec(
@@ -167,6 +175,7 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
     HuggingFaceSourceSpec(
         source_name="maliciousinstruct",
         source_type="huggingface",
+        required=True,
         dataset_id="walledai/MaliciousInstruct",
         snapshots=(
             HuggingFaceSnapshotSpec(
@@ -356,6 +365,17 @@ def write_source_metadata(source_dir: Path, metadata: dict[str, Any]) -> None:
         metadata_file.write("\n")
 
 
+def write_run_summary(summary_path: Path, summary: dict[str, Any]) -> None:
+    with summary_path.open("w", encoding="utf-8", newline="\n") as summary_file:
+        json.dump(summary, summary_file, indent=2, ensure_ascii=False)
+        summary_file.write("\n")
+
+
+def remove_run_summary(summary_path: Path) -> None:
+    if summary_path.exists():
+        summary_path.unlink()
+
+
 def snapshot_source(
     source_spec: SourceSpec,
     raw_root: Path,
@@ -402,6 +422,12 @@ def snapshot_source(
     return source_metadata
 
 
+def remove_source_staging_dir(raw_root: Path, source_name: str) -> None:
+    source_dir = raw_root / source_name
+    if source_dir.exists():
+        shutil.rmtree(source_dir)
+
+
 def prepare_staging_root() -> Path:
     CORPUS_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -418,45 +444,125 @@ def replace_raw_snapshot(staging_root: Path) -> None:
     staging_root.replace(RAW_ROOT)
 
 
-def fetch_all_sources() -> list[dict[str, Any]]:
+def build_run_summary(
+    fetch_timestamp: str,
+    source_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    successful_sources = [
+        result for result in source_results if result["status"] == "success"
+    ]
+    failed_sources = [result for result in source_results if result["status"] == "failed"]
+    required_failures = [result for result in failed_sources if result["required"]]
+    optional_failures = [result for result in failed_sources if not result["required"]]
+
+    return {
+        "fetch_timestamp": fetch_timestamp,
+        "all_required_sources_succeeded": len(required_failures) == 0,
+        "successful_source_count": len(successful_sources),
+        "failed_source_count": len(failed_sources),
+        "required_failure_count": len(required_failures),
+        "optional_failure_count": len(optional_failures),
+        "source_results": source_results,
+    }
+
+
+def fetch_all_sources() -> dict[str, Any]:
     fetch_timestamp = datetime.now(timezone.utc).isoformat()
     hf_token = get_huggingface_token()
     staging_root = prepare_staging_root()
 
-    source_summaries = []
-    try:
-        for source_spec in SOURCE_REGISTRY:
-            source_summaries.append(
-                snapshot_source(
-                    source_spec=source_spec,
-                    raw_root=staging_root,
-                    hf_token=hf_token,
-                    fetch_timestamp=fetch_timestamp,
-                )
-            )
-    except Exception:
-        shutil.rmtree(staging_root, ignore_errors=True)
-        raise
+    source_results = []
 
-    replace_raw_snapshot(staging_root)
-    return source_summaries
+    for source_spec in SOURCE_REGISTRY:
+        try:
+            source_summary = snapshot_source(
+                source_spec=source_spec,
+                raw_root=staging_root,
+                hf_token=hf_token,
+                fetch_timestamp=fetch_timestamp,
+            )
+            source_results.append(
+                {
+                    "source_name": source_spec.source_name,
+                    "source_type": source_spec.source_type,
+                    "required": source_spec.required,
+                    "status": "success",
+                    "summary": source_summary,
+                }
+            )
+        except Exception as error:
+            remove_source_staging_dir(staging_root, source_spec.source_name)
+            logger.error(
+                "Failed to fetch source '%s' (%s, required=%s): %s: %s",
+                source_spec.source_name,
+                source_spec.source_type,
+                source_spec.required,
+                type(error).__name__,
+                error,
+            )
+            source_results.append(
+                {
+                    "source_name": source_spec.source_name,
+                    "source_type": source_spec.source_type,
+                    "required": source_spec.required,
+                    "status": "failed",
+                    "error_type": type(error).__name__,
+                    "error_message": str(error),
+                }
+            )
+
+    run_summary = build_run_summary(
+        fetch_timestamp=fetch_timestamp,
+        source_results=source_results,
+    )
+
+    if run_summary["all_required_sources_succeeded"]:
+        write_run_summary(staging_root / "fetch_run_summary.json", run_summary)
+        replace_raw_snapshot(staging_root)
+        remove_run_summary(CORPUS_ROOT / "fetch_run_summary.json")
+    else:
+        failure_summary_path = CORPUS_ROOT / "fetch_run_summary.json"
+        write_run_summary(failure_summary_path, run_summary)
+        shutil.rmtree(staging_root, ignore_errors=True)
+
+    return run_summary
 
 
 def main() -> int:
     configure_logging()
-    summaries = fetch_all_sources()
-    total_sources = len(summaries)
-    total_bytes = sum(summary["total_byte_count"] for summary in summaries)
+    run_summary = fetch_all_sources()
+    successful_summaries = [
+        result["summary"]
+        for result in run_summary["source_results"]
+        if result["status"] == "success"
+    ]
+    total_sources = len(run_summary["source_results"])
+    total_bytes = sum(summary["total_byte_count"] for summary in successful_summaries)
     countable_record_total = sum(
-        summary["total_record_count"] or 0 for summary in summaries
+        summary["total_record_count"] or 0 for summary in successful_summaries
     )
-    logger.info(
-        "Completed raw corpus snapshot for %s sources with %s countable records and %s total bytes",
-        total_sources,
-        countable_record_total,
-        total_bytes,
+    if run_summary["all_required_sources_succeeded"]:
+        logger.info(
+            "Completed raw corpus snapshot for %s sources with %s countable records and %s total bytes",
+            total_sources,
+            countable_record_total,
+            total_bytes,
+        )
+        if run_summary["optional_failure_count"]:
+            logger.warning(
+                "Canonical raw corpus was replaced, but %s optional sources failed. "
+                "See fetch_run_summary.json in data/corpus/raw/ for details.",
+                run_summary["optional_failure_count"],
+            )
+        return 0
+
+    logger.error(
+        "Fetch run completed with %s required source failures and %s optional source failures. "
+        "Canonical raw corpus was NOT replaced. See data/corpus/fetch_run_summary.json for details.",
+        run_summary["required_failure_count"],
+        run_summary["optional_failure_count"],
     )
-    return 0
+    return 1
 
 
 if __name__ == "__main__":
