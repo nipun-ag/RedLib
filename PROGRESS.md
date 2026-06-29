@@ -1,6 +1,61 @@
 # RedLib — Progress Log
 
 ## 2026-06-29
+Refactored taxonomy discovery to use structured outputs, fuller sample
+utilization, and a smaller model contract.
+
+Issue:
+- `discover_taxonomy.py` still relied on free-form JSON generation and
+  repair retries even though the installed Anthropic SDK supports
+  schema-backed parsed outputs directly.
+- The previous allocation strategy effectively capped round size far
+  below the configured `ROUND_SAMPLE_SIZE`, which made the sample-size
+  setting misleading and underused large sources like WildJailbreak.
+- The model was still generating avoidable verbosity such as free-form
+  summaries and review notes that Python could replace with
+  deterministic bookkeeping.
+
+Change:
+- Replaced free-form JSON parsing with Anthropic structured outputs via
+  `client.messages.parse(..., output_format=RoundAnalysisOutput)`.
+- Removed JSON repair retries as the primary mechanism and changed
+  failure handling to persist structured-output debug context only when
+  the parsed response is incomplete.
+- Reworked sample allocation into two deterministic stages:
+  minimum per-source coverage first,
+  then proportional remainder allocation across remaining source
+  records with an anti-dominance share cap.
+- Reduced the model response schema so Claude now returns only compact
+  category judgments, traits, supporting sample IDs, and short open
+  questions.
+- Kept support counts, prompt IDs, source distributions, excerpts,
+  provenance, iteration diagnostics, and token-usage accounting in
+  Python.
+- Added per-round token estimates/usages and allocation diagnostics to
+  `proposed_taxonomy.json`.
+
+Why this implementation was needed:
+- Structured outputs are a cleaner architectural fit for a production
+  pipeline than asking for JSON text and repairing it after the fact.
+- A two-stage allocation strategy makes `ROUND_SAMPLE_SIZE` actually
+  meaningful while still preserving source diversity and preventing one
+  source from swallowing the round.
+- A smaller model contract reduces output-token pressure, lowers
+  truncation risk, and keeps deterministic evidence accounting in code
+  where it belongs.
+
+Verification:
+- Confirmed the local `anthropic==0.111.0` SDK supports
+  `messages.parse(...)` and schema-backed output configuration.
+- Verified the refactor removes the free-form JSON parsing path and the
+  hard per-source sample cap from `discover_taxonomy.py`.
+- Live end-to-end execution still depends on the local environment and
+  Anthropic credentials at runtime; in-session verification was limited
+  to code-path inspection and Python compilation readiness.
+
+---
+
+## 2026-06-29
 Hardened taxonomy discovery against malformed Claude JSON responses.
 
 Issue:

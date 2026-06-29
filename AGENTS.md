@@ -226,8 +226,10 @@ Phase 1 - In Development
   preserving cleanup stage over canonical JSONL that writes
   `data/corpus/normalized.jsonl`
 - `discover_taxonomy.py` is implemented as an LLM-assisted,
-  source-aware, stratified iterative stage that writes a human-review
-  taxonomy proposal to `data/corpus/proposed_taxonomy.json`
+  source-aware, stratified iterative stage with schema-backed
+  structured outputs and minimum-plus-proportional sample allocation
+  that writes a human-review taxonomy proposal to
+  `data/corpus/proposed_taxonomy.json`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only

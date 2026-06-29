@@ -186,9 +186,16 @@ Qdrant
 - `discover_taxonomy.py` exists so RedLib's labels emerge from the data
   instead of being permanently hardcoded up front.
 - Taxonomy discovery is iterative rather than one-pass: deterministic
-  code controls source-aware stratified sampling, iteration count,
-  saturation detection, and evidence accounting while the LLM proposes
-  or refines candidate families from excerpts.
+  code controls source-aware stratified sampling, minimum per-source
+  coverage, proportional remainder allocation, anti-dominance caps,
+  iteration count, saturation detection, and evidence accounting while
+  the LLM proposes or refines candidate families from excerpts.
+- Taxonomy discovery uses schema-backed structured outputs so the stage
+  receives validated structured data rather than parsing free-form JSON.
+- The LLM is intentionally not asked to produce counts, provenance,
+  representative excerpts, or long summaries; Python computes those
+  deterministically from cited sample IDs after the model makes
+  category judgments.
 - Human review exists between discovery and classification so the
   taxonomy reflects research judgment, not only automated clustering.
 - `classify_corpus.py` exists so taxonomy application is consistent,
@@ -246,6 +253,7 @@ Qdrant
 - Records sampling strategy, iteration history, and saturation status
 - Uses code-computed support counts and source distribution from cited
   analyzed samples rather than model-invented numbers
+- Includes structured-output and token-usage diagnostics for each round
 - Intended for human review before it becomes operational taxonomy
 
 ### `classified.jsonl`

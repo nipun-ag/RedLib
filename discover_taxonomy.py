@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -24,73 +26,83 @@ MAX_ITERATIONS = 4
 ROUND_SAMPLE_SIZE = int(
     os.environ.get("REDLIB_TAXONOMY_SAMPLE_SIZE", "500")
 )
+ROUND_MAX_OUTPUT_TOKENS = 1800
 MIN_SAMPLES_PER_SOURCE_PER_ROUND = 6
-MAX_SAMPLES_PER_SOURCE_PER_ROUND = 18
+MAX_SOURCE_SHARE_PER_ROUND = 0.35
 SATURATION_STREAK_THRESHOLD = 2
 MAX_EXCERPT_CHARS = 180
-MAX_CITED_SAMPLE_IDS_PER_CATEGORY = 18
-MAX_REPRESENTATIVE_EXCERPTS = 4
+MAX_CITED_SAMPLE_IDS_PER_CATEGORY = 8
+MAX_REPRESENTATIVE_EXCERPTS = 3
 MAX_CATEGORY_COUNT = 16
-JSON_REPAIR_ATTEMPTS = 2
+MAX_CATEGORY_TRAITS = 6
+MAX_NEW_CATEGORIES_PER_ROUND = 4
+MAX_OPEN_QUESTIONS = 3
 
-REQUIRED_TAXONOMY_JSON_SHAPE = """{
-  "round_summary": "short paragraph",
-  "existing_category_matches": [
-    {
-      "name": "existing category name",
-      "supporting_sample_ids": ["R01S001", "R02S004"],
-      "refined_traits": ["trait", "trait"],
-      "review_notes": "short note"
-    }
-  ],
-  "new_candidate_categories": [
-    {
-      "name": "short label",
-      "description": "1-3 sentence description",
-      "distinguishing_traits": ["trait", "trait"],
-      "supporting_sample_ids": ["R01S002", "R01S009"],
-      "review_notes": "short note about overlap or ambiguity"
-    }
-  ],
-  "open_questions": ["question", "question"]
-}"""
-
-SYSTEM_PROMPT = f"""You are helping propose a human-reviewed taxonomy for a jailbreak-prompt research corpus.
+SYSTEM_PROMPT = """You are helping propose a human-reviewed taxonomy for a jailbreak-prompt research corpus.
 
 This is iterative taxonomy discovery, not final classification.
 
-Your task:
-- Review the excerpted prompts for this round.
-- Compare them against any existing candidate categories already discovered.
-- For each round sample, decide whether it strengthens an existing category or supports a genuinely new category.
-- Focus on jailbreak mechanics and interaction patterns, not on the harmful topic domain.
+Your task is intentionally narrow:
+- Match round samples to existing categories when they clearly fit.
+- Propose genuinely new mechanism-focused categories only when the current taxonomy does not fit.
+- Use only the provided sample IDs as evidence.
+- Keep outputs compact.
 
 Hard constraints:
 - Do not reproduce full prompts.
 - Do not invent numeric support counts.
 - Do not cite any evidence except the provided sample IDs.
 - Do not use source names, benchmark names, dataset names, or harm domains as taxonomy labels.
-- Return valid JSON only, with no markdown fences and no surrounding commentary.
-
-Return exactly this JSON shape:
-{REQUIRED_TAXONOMY_JSON_SHAPE}
+- Do not return long summaries, paragraphs of commentary, or repeated rationale.
+- Keep descriptions to one or two sentences.
+- Keep traits short and discriminative.
 
 Rules:
-- Propose only genuinely new categories in new_candidate_categories.
-- Prefer broad recurring technique families over narrow one-off themes.
-- If evidence is better explained by an existing category, use existing_category_matches instead of inventing a new one.
-- If categories overlap, say so in review_notes.
+- Prefer broad recurring technique families over one-off themes.
+- Cite only the strongest supporting sample IDs for each category.
+- If evidence is better explained by an existing category, strengthen that category instead of inventing a new one.
 """
 
-JSON_REPAIR_SYSTEM_PROMPT = f"""You repair malformed JSON responses.
 
-Return only valid JSON with no markdown fences and no explanation.
-Do not change the intended meaning unless a minimal structural fix is required.
-Preserve category names, sample IDs, traits, descriptions, and review notes whenever possible.
+class ExistingCategoryMatchOutput(BaseModel):
+    name: str = Field(min_length=1)
+    supporting_sample_ids: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CITED_SAMPLE_IDS_PER_CATEGORY,
+    )
+    refined_traits: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CATEGORY_TRAITS,
+    )
 
-The required JSON shape is:
-{REQUIRED_TAXONOMY_JSON_SHAPE}
-"""
+
+class NewCandidateCategoryOutput(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    distinguishing_traits: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CATEGORY_TRAITS,
+    )
+    supporting_sample_ids: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CITED_SAMPLE_IDS_PER_CATEGORY,
+    )
+    related_existing_categories: list[str] = Field(default_factory=list, max_length=3)
+
+
+class RoundAnalysisOutput(BaseModel):
+    existing_category_matches: list[ExistingCategoryMatchOutput] = Field(
+        default_factory=list,
+        max_length=MAX_CATEGORY_COUNT,
+    )
+    new_candidate_categories: list[NewCandidateCategoryOutput] = Field(
+        default_factory=list,
+        max_length=MAX_NEW_CATEGORIES_PER_ROUND,
+    )
+    open_questions: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_OPEN_QUESTIONS,
+    )
 
 
 @dataclass(frozen=True)
@@ -113,6 +125,26 @@ class SampledRecord:
     prompt_length_bucket: str
     excerpt: str
     stratification_signature: str
+
+
+@dataclass(frozen=True)
+class SampleSelectionResult:
+    samples: list[SampledRecord]
+    source_allocations: dict[str, int]
+    source_counts: dict[str, int]
+    stratum_counts: dict[str, int]
+    requested_sample_size: int
+    actual_sample_count: int
+    effective_max_sample_count: int
+
+
+@dataclass(frozen=True)
+class RoundAnalysisResult:
+    payload: RoundAnalysisOutput
+    estimated_input_tokens: int | None
+    actual_input_tokens: int
+    actual_output_tokens: int
+    stop_reason: str | None
 
 
 def configure_logging() -> None:
@@ -227,45 +259,120 @@ def allocate_source_samples(
     available_by_source: dict[str, int],
 ) -> dict[str, int]:
     source_names = sorted(available_by_source)
-    allocations = {
-        source: min(available_by_source[source], MIN_SAMPLES_PER_SOURCE_PER_ROUND)
+    if not source_names or ROUND_SAMPLE_SIZE <= 0:
+        return {}
+
+    allocations = {source: 0 for source in source_names}
+    remaining_budget = ROUND_SAMPLE_SIZE
+
+    # Stage 1: guarantee a minimum contribution from every source when budget allows.
+    guaranteed_total = sum(
+        min(available_by_source[source], MIN_SAMPLES_PER_SOURCE_PER_ROUND)
+        for source in source_names
+    )
+    if guaranteed_total <= ROUND_SAMPLE_SIZE:
+        allocations = {
+            source: min(available_by_source[source], MIN_SAMPLES_PER_SOURCE_PER_ROUND)
+            for source in source_names
+        }
+        remaining_budget = ROUND_SAMPLE_SIZE - sum(allocations.values())
+    else:
+        while remaining_budget > 0:
+            progress_made = False
+            for source in source_names:
+                if allocations[source] >= available_by_source[source]:
+                    continue
+                allocations[source] += 1
+                remaining_budget -= 1
+                progress_made = True
+                if remaining_budget == 0:
+                    break
+            if not progress_made:
+                break
+        return allocations
+
+    effective_max_source_share = max(
+        MAX_SOURCE_SHARE_PER_ROUND,
+        1 / max(len(source_names), 1),
+    )
+    max_source_allocation = math.ceil(ROUND_SAMPLE_SIZE * effective_max_source_share)
+    per_source_caps = {
+        source: min(
+            available_by_source[source],
+            max(max_source_allocation, allocations[source]),
+        )
         for source in source_names
     }
 
-    allocated_total = sum(allocations.values())
-    if allocated_total > ROUND_SAMPLE_SIZE:
-        base_allocation = max(1, ROUND_SAMPLE_SIZE // max(len(source_names), 1))
-        allocations = {
-            source: min(available_by_source[source], base_allocation)
+    # Stage 2: allocate the remaining budget proportionally to the remaining
+    # available records while enforcing an anti-dominance source cap.
+    while remaining_budget > 0:
+        eligible_sources = [
+            source
             for source in source_names
-        }
-
-    remaining = ROUND_SAMPLE_SIZE - sum(allocations.values())
-    while remaining > 0:
-        progress_made = False
-        source_priority = sorted(
-            source_names,
-            key=lambda source: (
-                -(
-                    min(available_by_source[source], MAX_SAMPLES_PER_SOURCE_PER_ROUND)
-                    - allocations[source]
-                ),
-                source,
-            ),
-        )
-        for source in source_priority:
-            max_allowed = min(
-                available_by_source[source], MAX_SAMPLES_PER_SOURCE_PER_ROUND
-            )
-            if allocations[source] >= max_allowed:
-                continue
-            allocations[source] += 1
-            remaining -= 1
-            progress_made = True
-            if remaining == 0:
-                break
-        if not progress_made:
+            if allocations[source] < per_source_caps[source]
+        ]
+        if not eligible_sources:
             break
+
+        remaining_records_by_source = {
+            source: available_by_source[source] - allocations[source]
+            for source in eligible_sources
+        }
+        total_remaining_records = sum(remaining_records_by_source.values())
+        if total_remaining_records <= 0:
+            break
+
+        staged_additions = {source: 0 for source in eligible_sources}
+        assigned_this_round = 0
+        fractional_remainders: list[tuple[float, int, str]] = []
+
+        for source in eligible_sources:
+            capped_remaining = per_source_caps[source] - allocations[source]
+            ideal_allocation = (
+                remaining_budget
+                * remaining_records_by_source[source]
+                / total_remaining_records
+            )
+            staged_additions[source] = min(
+                capped_remaining,
+                math.floor(ideal_allocation),
+            )
+            assigned_this_round += staged_additions[source]
+            fractional_remainders.append(
+                (
+                    ideal_allocation - math.floor(ideal_allocation),
+                    remaining_records_by_source[source],
+                    source,
+                )
+            )
+
+        leftover_budget = remaining_budget - assigned_this_round
+        for _, _, source in sorted(
+            fractional_remainders,
+            key=lambda item: (-item[0], -item[1], item[2]),
+        ):
+            if leftover_budget == 0:
+                break
+            capped_remaining = per_source_caps[source] - (
+                allocations[source] + staged_additions[source]
+            )
+            if capped_remaining <= 0:
+                continue
+            staged_additions[source] += 1
+            leftover_budget -= 1
+
+        if all(addition == 0 for addition in staged_additions.values()):
+            fallback_source = sorted(
+                eligible_sources,
+                key=lambda source: (-remaining_records_by_source[source], source),
+            )[0]
+            staged_additions[fallback_source] = 1
+
+        for source, addition in staged_additions.items():
+            allocations[source] += addition
+
+        remaining_budget = ROUND_SAMPLE_SIZE - sum(allocations.values())
 
     return allocations
 
@@ -274,12 +381,20 @@ def select_round_samples(
     records: list[NormalizedRecord],
     analyzed_prompt_ids: set[str],
     iteration_number: int,
-) -> tuple[list[SampledRecord], dict[str, int], dict[str, int]]:
+) -> SampleSelectionResult:
     remaining_records = [
         record for record in records if record.prompt_id not in analyzed_prompt_ids
     ]
     if not remaining_records:
-        return [], {}, {}
+        return SampleSelectionResult(
+            samples=[],
+            source_allocations={},
+            source_counts={},
+            stratum_counts={},
+            requested_sample_size=ROUND_SAMPLE_SIZE,
+            actual_sample_count=0,
+            effective_max_sample_count=0,
+        )
 
     remaining_by_source: dict[str, list[NormalizedRecord]] = defaultdict(list)
     for record in remaining_records:
@@ -291,8 +406,7 @@ def select_round_samples(
     }
     source_allocations = allocate_source_samples(available_by_source)
     effective_round_capacity = sum(
-        min(count, MAX_SAMPLES_PER_SOURCE_PER_ROUND)
-        for count in available_by_source.values()
+        source_allocations.get(source, 0) for source in available_by_source
     )
 
     sampled_records: list[NormalizedRecord] = []
@@ -343,13 +457,13 @@ def select_round_samples(
 
     sampled_records = sampled_records[:ROUND_SAMPLE_SIZE]
     logger.info(
-        "Round %s requested up to %s samples and selected %s from %s unseen records across %s sources; per-source cap=%s, effective capped capacity=%s",
+        "Round %s requested %s samples and selected %s from %s unseen records across %s sources; target allocations=%s; effective capacity=%s",
         iteration_number,
         ROUND_SAMPLE_SIZE,
         len(sampled_records),
         len(remaining_records),
         len(available_by_source),
-        MAX_SAMPLES_PER_SOURCE_PER_ROUND,
+        dict(sorted(source_allocations.items())),
         effective_round_capacity,
     )
     samples = [
@@ -365,8 +479,14 @@ def select_round_samples(
         )
         for index, record in enumerate(sampled_records, start=1)
     ]
-    return samples, dict(sorted(round_source_counts.items())), dict(
-        sorted(round_stratum_counts.items())
+    return SampleSelectionResult(
+        samples=samples,
+        source_allocations=dict(sorted(source_allocations.items())),
+        source_counts=dict(sorted(round_source_counts.items())),
+        stratum_counts=dict(sorted(round_stratum_counts.items())),
+        requested_sample_size=ROUND_SAMPLE_SIZE,
+        actual_sample_count=len(samples),
+        effective_max_sample_count=effective_round_capacity,
     )
 
 
@@ -386,6 +506,12 @@ def build_analysis_payload(
     else:
         lines.append("- None yet. Propose initial categories from the evidence.")
 
+    lines.append("")
+    lines.append(
+        f"Return at most {MAX_NEW_CATEGORIES_PER_ROUND} new categories, "
+        f"at most {MAX_CITED_SAMPLE_IDS_PER_CATEGORY} supporting sample IDs per category, "
+        f"and at most {MAX_OPEN_QUESTIONS} short open questions."
+    )
     lines.append("")
     lines.append("Round sample distribution by source:")
     for source, count in source_counts.items():
@@ -419,34 +545,16 @@ def extract_text_content(response: Any) -> str:
         block_text = getattr(block, "text", None)
         if block_text:
             text_parts.append(block_text)
-    if not text_parts:
-        raise ValueError("Anthropic response did not contain text content.")
     return "\n".join(text_parts).strip()
 
 
-def extract_json_payload(response_text: str) -> dict[str, Any]:
-    first_brace = response_text.find("{")
-    last_brace = response_text.rfind("}")
-    if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
-        raise ValueError("LLM response did not contain a JSON object.")
-
-    payload_text = response_text[first_brace : last_brace + 1]
-    try:
-        payload = json.loads(payload_text)
-    except json.JSONDecodeError as error:
-        raise ValueError(f"LLM returned invalid JSON: {error.msg}") from error
-
-    if not isinstance(payload, dict):
-        raise ValueError("LLM taxonomy response must be a JSON object.")
-    return payload
-
-
-def write_invalid_response_debug(
+def write_structured_output_debug(
     *,
     iteration_number: int,
     response_stage: str,
-    response_text: str,
-    errors: list[str],
+    error_message: str,
+    response: Any | None = None,
+    estimated_input_tokens: int | None = None,
 ) -> Path:
     TAXONOMY_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -459,8 +567,20 @@ def write_invalid_response_debug(
         "iteration": iteration_number,
         "model": MODEL_NAME,
         "response_stage": response_stage,
-        "errors": errors,
-        "raw_response": response_text,
+        "error": error_message,
+        "structured_output_enabled": True,
+        "schema": "RoundAnalysisOutput",
+        "estimated_input_tokens": estimated_input_tokens,
+        "stop_reason": getattr(response, "stop_reason", None) if response else None,
+        "usage": (
+            {
+                "input_tokens": getattr(response.usage, "input_tokens", None),
+                "output_tokens": getattr(response.usage, "output_tokens", None),
+            }
+            if response and getattr(response, "usage", None)
+            else None
+        ),
+        "raw_response": extract_text_content(response) if response else "",
     }
     with debug_path.open("w", encoding="utf-8", newline="\n") as debug_file:
         json.dump(payload, debug_file, indent=2, ensure_ascii=False)
@@ -468,86 +588,22 @@ def write_invalid_response_debug(
     return debug_path
 
 
-def request_json_repair(
+def estimate_round_input_tokens(
     client: Anthropic,
     *,
-    iteration_number: int,
-    invalid_response: str,
-    parse_error: str,
-    repair_attempt: int,
-) -> str:
-    logger.info(
-        "Requesting JSON repair attempt %s for taxonomy discovery round %s",
-        repair_attempt,
-        iteration_number,
-    )
-    repair_prompt = (
-        f"Repair the malformed JSON for taxonomy discovery round {iteration_number}.\n\n"
-        f"Parse error:\n{parse_error}\n\n"
-        "Return only valid JSON matching the required schema.\n\n"
-        "Malformed response:\n"
-        f"{invalid_response}"
-    )
-    response = client.messages.create(
-        model=MODEL_NAME,
-        max_tokens=4000,
-        temperature=0,
-        system=JSON_REPAIR_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": repair_prompt}],
-    )
-    return extract_text_content(response)
-
-
-def parse_llm_payload_with_repair(
-    client: Anthropic,
-    *,
-    iteration_number: int,
-    response_text: str,
-) -> dict[str, Any]:
-    errors: list[str] = []
-    current_response_text = response_text
-
-    for attempt_number in range(0, JSON_REPAIR_ATTEMPTS + 1):
-        try:
-            return extract_json_payload(current_response_text)
-        except ValueError as error:
-            error_message = str(error)
-            errors.append(error_message)
-            if attempt_number == 0:
-                logger.warning(
-                    "Taxonomy discovery round %s returned malformed JSON: %s",
-                    iteration_number,
-                    error_message,
-                )
-            else:
-                logger.warning(
-                    "Taxonomy discovery round %s JSON repair attempt %s failed: %s",
-                    iteration_number,
-                    attempt_number,
-                    error_message,
-                )
-
-            if attempt_number >= JSON_REPAIR_ATTEMPTS:
-                debug_path = write_invalid_response_debug(
-                    iteration_number=iteration_number,
-                    response_stage="invalid_json",
-                    response_text=current_response_text,
-                    errors=errors,
-                )
-                raise SystemExit(
-                    "Taxonomy discovery could not recover valid JSON for "
-                    f"round {iteration_number}. Saved debug response to {debug_path}."
-                ) from error
-
-            current_response_text = request_json_repair(
-                client,
-                iteration_number=iteration_number,
-                invalid_response=current_response_text,
-                parse_error=error_message,
-                repair_attempt=attempt_number + 1,
-            )
-
-    raise AssertionError("JSON repair loop exited unexpectedly.")
+    user_prompt: str,
+) -> int | None:
+    try:
+        token_estimate = client.messages.count_tokens(
+            model=MODEL_NAME,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+            output_format=RoundAnalysisOutput,
+        )
+    except Exception as error:
+        logger.warning("Could not estimate taxonomy round input tokens: %s", error)
+        return None
+    return token_estimate.input_tokens
 
 
 def request_round_analysis(
@@ -556,7 +612,7 @@ def request_round_analysis(
     samples: list[SampledRecord],
     source_counts: dict[str, int],
     existing_categories: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> RoundAnalysisResult:
     analysis_payload = build_analysis_payload(
         samples=samples,
         source_counts=source_counts,
@@ -567,27 +623,57 @@ def request_round_analysis(
         "Goals:\n"
         "- Strengthen existing categories when the evidence fits them.\n"
         "- Propose only genuinely new categories when the evidence does not fit existing ones.\n"
-        "- Keep the taxonomy mechanism-focused, not topic-focused.\n\n"
+        "- Keep the taxonomy mechanism-focused, not topic-focused.\n"
+        "- Keep the output compact and schema-compliant.\n\n"
+        "If a new category overlaps with an existing category, list the overlapping "
+        "existing category names under related_existing_categories instead of writing "
+        "long rationale.\n\n"
         f"{analysis_payload}"
+    )
+    estimated_input_tokens = estimate_round_input_tokens(
+        client,
+        user_prompt=user_prompt,
     )
 
     logger.info(
-        "Requesting taxonomy discovery round %s from Anthropic model %s over %s sampled records",
+        "Requesting taxonomy discovery round %s from Anthropic model %s over %s sampled records with structured outputs (estimated input tokens=%s, max output tokens=%s)",
         iteration_number,
         MODEL_NAME,
         len(samples),
+        estimated_input_tokens if estimated_input_tokens is not None else "unknown",
+        ROUND_MAX_OUTPUT_TOKENS,
     )
-    response = client.messages.create(
+    response = client.messages.parse(
         model=MODEL_NAME,
-        max_tokens=4000,
+        max_tokens=ROUND_MAX_OUTPUT_TOKENS,
         temperature=0,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
+        output_format=RoundAnalysisOutput,
     )
-    return parse_llm_payload_with_repair(
-        client,
-        iteration_number=iteration_number,
-        response_text=extract_text_content(response),
+    if response.stop_reason == "max_tokens" or response.parsed_output is None:
+        error_message = (
+            "Structured taxonomy output was incomplete or missing. "
+            f"stop_reason={response.stop_reason}"
+        )
+        debug_path = write_structured_output_debug(
+            iteration_number=iteration_number,
+            response_stage="structured_output_failure",
+            error_message=error_message,
+            response=response,
+            estimated_input_tokens=estimated_input_tokens,
+        )
+        raise SystemExit(
+            "Taxonomy discovery did not receive a complete structured output for "
+            f"round {iteration_number}. Saved debug response to {debug_path}."
+        )
+
+    return RoundAnalysisResult(
+        payload=response.parsed_output,
+        estimated_input_tokens=estimated_input_tokens,
+        actual_input_tokens=response.usage.input_tokens,
+        actual_output_tokens=response.usage.output_tokens,
+        stop_reason=response.stop_reason,
     )
 
 
@@ -626,13 +712,23 @@ def ensure_string(value: Any) -> str:
     return ""
 
 
+def normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return deduplicate_preserve_order(
+        stripped_value
+        for item in value
+        if isinstance(item, str)
+        if (stripped_value := item.strip())
+    )
+
+
 def build_category_from_llm_family(
     family: dict[str, Any],
     sample_lookup: dict[str, SampledRecord],
 ) -> dict[str, Any] | None:
     name = ensure_string(family.get("name"))
     description = ensure_string(family.get("description"))
-    review_notes = ensure_string(family.get("review_notes"))
     if not name or not description:
         return None
 
@@ -672,12 +768,14 @@ def build_category_from_llm_family(
         "distinguishing_traits": normalize_trait_list(
             family.get("distinguishing_traits", [])
         ),
+        "related_existing_categories": normalize_string_list(
+            family.get("related_existing_categories", [])
+        ),
         "supporting_sample_ids": valid_sample_ids,
         "supporting_prompt_ids": prompt_ids,
         "support_count": len(valid_sample_ids),
         "source_distribution": dict(sorted(source_distribution.items())),
         "representative_excerpts": representative_excerpts,
-        "review_notes": review_notes,
     }
 
 
@@ -712,14 +810,6 @@ def merge_existing_category_match(
         category["distinguishing_traits"] + refined_traits
     )
 
-    review_note = ensure_string(match_payload.get("review_notes"))
-    if review_note:
-        existing_notes = ensure_string(category.get("review_notes", ""))
-        if existing_notes:
-            category["review_notes"] = f"{existing_notes} | {review_note}"
-        else:
-            category["review_notes"] = review_note
-
     source_distribution = Counter(
         sample_lookup[sample_id].source for sample_id in category["supporting_sample_ids"]
     )
@@ -747,8 +837,6 @@ def build_existing_categories_payload(
             "name": category["name"],
             "description": category["description"],
             "distinguishing_traits": category["distinguishing_traits"],
-            "support_count": category["support_count"],
-            "source_distribution": category["source_distribution"],
         }
         for category in categories
     ]
@@ -768,31 +856,42 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
     total_source_counts = dict(
         sorted(Counter(record.source for record in records).items())
     )
+    total_estimated_input_tokens = 0
+    total_actual_input_tokens = 0
+    total_actual_output_tokens = 0
 
     for iteration_number in range(1, MAX_ITERATIONS + 1):
-        samples, source_counts, stratum_counts = select_round_samples(
+        sample_selection = select_round_samples(
             records=records,
             analyzed_prompt_ids=analyzed_prompt_ids,
             iteration_number=iteration_number,
         )
-        if not samples:
+        if not sample_selection.samples:
             saturation_reason = "no_unseen_records_remaining"
             break
 
         existing_categories_before_round = len(categories)
-        sample_lookup = {sample.sample_id: sample for sample in samples}
+        sample_lookup = {
+            sample.sample_id: sample for sample in sample_selection.samples
+        }
         all_sample_lookup.update(sample_lookup)
-        analyzed_prompt_ids.update(sample.prompt_id for sample in samples)
-
-        llm_payload = request_round_analysis(
-            client=client,
-            iteration_number=iteration_number,
-            samples=samples,
-            source_counts=source_counts,
-            existing_categories=build_existing_categories_payload(categories),
+        analyzed_prompt_ids.update(
+            sample.prompt_id for sample in sample_selection.samples
         )
 
-        round_summary = ensure_string(llm_payload.get("round_summary"))
+        round_analysis = request_round_analysis(
+            client=client,
+            iteration_number=iteration_number,
+            samples=sample_selection.samples,
+            source_counts=sample_selection.source_counts,
+            existing_categories=build_existing_categories_payload(categories),
+        )
+        llm_payload = round_analysis.payload.model_dump()
+        if round_analysis.estimated_input_tokens is not None:
+            total_estimated_input_tokens += round_analysis.estimated_input_tokens
+        total_actual_input_tokens += round_analysis.actual_input_tokens
+        total_actual_output_tokens += round_analysis.actual_output_tokens
+
         round_open_questions = llm_payload.get("open_questions", [])
         if isinstance(round_open_questions, list):
             open_questions.extend(
@@ -845,9 +944,14 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
                     match_payload={
                         "supporting_sample_ids": category["supporting_sample_ids"],
                         "refined_traits": category["distinguishing_traits"],
-                        "review_notes": category["review_notes"],
                     },
                     sample_lookup=all_sample_lookup,
+                )
+                existing_category["related_existing_categories"] = (
+                    deduplicate_preserve_order(
+                        existing_category.get("related_existing_categories", [])
+                        + category.get("related_existing_categories", [])
+                    )
                 )
                 continue
 
@@ -873,10 +977,13 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
         iterations.append(
             {
                 "iteration": iteration_number,
-                "round_sample_count": len(samples),
+                "requested_round_sample_size": sample_selection.requested_sample_size,
+                "round_sample_count": sample_selection.actual_sample_count,
                 "cumulative_analyzed_sample_count": len(analyzed_prompt_ids),
-                "round_source_counts": source_counts,
-                "round_stratum_counts": stratum_counts,
+                "target_source_allocations": sample_selection.source_allocations,
+                "round_source_counts": sample_selection.source_counts,
+                "round_stratum_counts": sample_selection.stratum_counts,
+                "effective_max_sample_count": sample_selection.effective_max_sample_count,
                 "existing_categories_before_round": existing_categories_before_round,
                 "existing_category_matches": deduplicate_preserve_order(
                     matched_category_names
@@ -884,14 +991,22 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
                 "new_category_names": new_categories_added,
                 "valid_new_category_count": valid_new_category_count,
                 "evidence_added_to_existing_categories": evidence_added_to_existing,
-                "round_summary": round_summary,
+                "llm_usage": {
+                    "structured_output_enabled": True,
+                    "schema": "RoundAnalysisOutput",
+                    "estimated_input_tokens": round_analysis.estimated_input_tokens,
+                    "actual_input_tokens": round_analysis.actual_input_tokens,
+                    "actual_output_tokens": round_analysis.actual_output_tokens,
+                    "stop_reason": round_analysis.stop_reason,
+                },
             }
         )
 
         logger.info(
-            "Taxonomy discovery round %s analyzed %s records, added %s new categories, streak=%s",
+            "Taxonomy discovery round %s analyzed %s/%s requested samples, added %s new categories, streak=%s",
             iteration_number,
-            len(samples),
+            sample_selection.actual_sample_count,
+            sample_selection.requested_sample_size,
             valid_new_category_count,
             no_new_category_streak,
         )
@@ -909,6 +1024,15 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
         "iterations": iterations,
         "open_questions": deduplicate_preserve_order(open_questions),
         "analyzed_sample_count": len(analyzed_prompt_ids),
+        "token_usage": {
+            "structured_output_enabled": True,
+            "schema": "RoundAnalysisOutput",
+            "estimated_total_input_tokens": total_estimated_input_tokens
+            if total_estimated_input_tokens > 0
+            else None,
+            "actual_total_input_tokens": total_actual_input_tokens,
+            "actual_total_output_tokens": total_actual_output_tokens,
+        },
         "saturation_status": {
             "reached": saturation_reason != "max_iterations_reached"
             or no_new_category_streak >= SATURATION_STREAK_THRESHOLD,
@@ -934,22 +1058,26 @@ def discover_taxonomy() -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "normalized_path": str(NORMALIZED_PATH),
         "proposed_taxonomy_path": str(PROPOSED_TAXONOMY_PATH),
-        "report_version": 2,
+        "report_version": 3,
         "human_review_required": True,
         "model": {
             "provider": "anthropic",
             "model": MODEL_NAME,
+            "structured_output_enabled": True,
+            "structured_output_schema": "RoundAnalysisOutput",
+            "round_max_output_tokens": ROUND_MAX_OUTPUT_TOKENS,
         },
         "sampling_strategy": {
             "seed": SAMPLING_SEED,
             "approach": (
                 "deterministic, source-aware, stratified iterative sampling with "
-                "stable prompt ordering and unseen-record rounds"
+                "stable prompt ordering, minimum per-source coverage, "
+                "proportional remainder allocation, and unseen-record rounds"
             ),
             "strata": ["source", "source_file", "prompt_length_bucket"],
             "round_sample_size": ROUND_SAMPLE_SIZE,
             "min_samples_per_source_per_round": MIN_SAMPLES_PER_SOURCE_PER_ROUND,
-            "max_samples_per_source_per_round": MAX_SAMPLES_PER_SOURCE_PER_ROUND,
+            "max_source_share_per_round": MAX_SOURCE_SHARE_PER_ROUND,
             "excerpt_max_chars": MAX_EXCERPT_CHARS,
         },
         "saturation_status": discovery_result["saturation_status"],
@@ -958,6 +1086,23 @@ def discover_taxonomy() -> dict[str, Any]:
         "analyzed_sample_count": discovery_result["analyzed_sample_count"],
         "total_normalized_records": len(records),
         "source_record_counts": discovery_result["total_source_counts"],
+        "token_usage": discovery_result["token_usage"],
+        "llm_output_contract": {
+            "schema_backed": True,
+            "schema": "RoundAnalysisOutput",
+            "llm_owned_fields": [
+                "existing_category_matches.name",
+                "existing_category_matches.supporting_sample_ids",
+                "existing_category_matches.refined_traits",
+                "new_candidate_categories.name",
+                "new_candidate_categories.description",
+                "new_candidate_categories.distinguishing_traits",
+                "new_candidate_categories.supporting_sample_ids",
+                "new_candidate_categories.related_existing_categories",
+                "open_questions",
+            ],
+            "removed_freeform_fields": ["round_summary", "review_notes"],
+        },
         "analysis_constraints": {
             "normalized_data_modified": False,
             "classified_artifacts_created": False,
@@ -965,7 +1110,7 @@ def discover_taxonomy() -> dict[str, Any]:
             "qdrant_or_embedding_operations_performed": False,
             "numeric_support_counts_are_code_computed": True,
             "notes": [
-                "The LLM proposes or refines category structure, but code controls sampling, iteration count, saturation detection, support counts, and source distribution.",
+                "The LLM proposes or refines category structure, but code controls sampling, iteration count, saturation detection, support counts, source distribution, representative excerpts, and provenance.",
                 "Category support_count values are counts of cited sample IDs from analyzed rounds, not full-corpus classification counts.",
                 "Representative excerpts are truncated to avoid full prompt reproduction during taxonomy proposal.",
             ],
@@ -1000,6 +1145,13 @@ def main() -> int:
         report["analyzed_sample_count"],
         report["saturation_status"]["completed_iterations"],
         PROPOSED_TAXONOMY_PATH,
+    )
+    logger.info(
+        "Structured outputs active=%s; requested round sample size=%s; total actual token usage input=%s output=%s",
+        report["model"]["structured_output_enabled"],
+        report["sampling_strategy"]["round_sample_size"],
+        report["token_usage"]["actual_total_input_tokens"],
+        report["token_usage"]["actual_total_output_tokens"],
     )
     return 0
 
