@@ -35,18 +35,30 @@ SATURATION_STREAK_THRESHOLD = 2
 MAX_EXCERPT_CHARS = 180
 MAX_CITED_SAMPLE_IDS_PER_CATEGORY = 8
 MAX_REPRESENTATIVE_EXCERPTS = 3
-MAX_CATEGORY_COUNT = 16
+MAX_TOP_LEVEL_CATEGORY_COUNT = 8
 MAX_CATEGORY_TRAITS = 6
-MAX_NEW_CATEGORIES_PER_ROUND = 4
+MAX_SUBTECHNIQUES_PER_TOP_LEVEL = 5
+MAX_EXISTING_TOP_LEVEL_MATCHES_PER_ROUND = 8
+MAX_NEW_TOP_LEVEL_CATEGORIES_PER_ROUND = 2
 MAX_OPEN_QUESTIONS = 3
+PREFERRED_TOP_LEVEL_CATEGORIES = [
+    "Instruction Override",
+    "Persona / Character Adoption",
+    "Authority or Legitimacy Spoofing",
+    "Fictional / Hypothetical Framing",
+    "Obfuscation / Encoding",
+    "Legitimate Context or Research Framing",
+    "Dual-Response / Response-Format Manipulation",
+]
 
 SYSTEM_PROMPT = """You are helping propose a human-reviewed taxonomy for a jailbreak-prompt research corpus.
 
 This is iterative taxonomy discovery, not final classification.
 
 Your task is intentionally narrow:
-- Match round samples to existing categories when they clearly fit.
-- Propose genuinely new mechanism-focused categories only when the current taxonomy does not fit.
+- Match round samples to existing top-level categories when they clearly fit.
+- Propose genuinely new broad top-level mechanism families only when the current taxonomy does not fit.
+- Place prompt variants and narrower jailbreak patterns under subtechniques, not as separate top-level categories.
 - Use only the provided sample IDs as evidence.
 - Keep outputs compact.
 
@@ -58,16 +70,40 @@ Hard constraints:
 - Do not return long summaries, paragraphs of commentary, or repeated rationale.
 - Keep descriptions to one or two sentences.
 - Keep traits short and discriminative.
+- Top-level categories must be broad, durable jailbreak or red-team mechanisms.
+- Low-support or one-off ideas should be demoted into subtechniques rather than introduced as new top-level categories.
 
 Rules:
 - Prefer broad recurring technique families over one-off themes.
+- Prefer merging into these broad families when possible:
+  Instruction Override
+  Persona / Character Adoption
+  Authority or Legitimacy Spoofing
+  Fictional / Hypothetical Framing
+  Obfuscation / Encoding
+  Legitimate Context or Research Framing
+  Dual-Response / Response-Format Manipulation
+- Variants such as simulation, sandbox, alternate universe, DAN-style prompts, and hypothetical ethics suspension should usually be subtechniques under a broader family rather than new top-level categories.
 - Cite only the strongest supporting sample IDs for each category.
-- If evidence is better explained by an existing category, strengthen that category instead of inventing a new one.
+- If evidence is better explained by an existing top-level category, strengthen that category instead of inventing a new one.
 """
 
 
-class ExistingCategoryMatchOutput(BaseModel):
+class SubtechniqueOutput(BaseModel):
     name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    supporting_sample_ids: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CITED_SAMPLE_IDS_PER_CATEGORY,
+    )
+    distinguishing_traits: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_CATEGORY_TRAITS,
+    )
+
+
+class ExistingTopLevelCategoryMatchOutput(BaseModel):
+    top_level_name: str = Field(min_length=1)
     supporting_sample_ids: list[str] = Field(
         default_factory=list,
         max_length=MAX_CITED_SAMPLE_IDS_PER_CATEGORY,
@@ -76,9 +112,13 @@ class ExistingCategoryMatchOutput(BaseModel):
         default_factory=list,
         max_length=MAX_CATEGORY_TRAITS,
     )
+    subtechniques: list[SubtechniqueOutput] = Field(
+        default_factory=list,
+        max_length=MAX_SUBTECHNIQUES_PER_TOP_LEVEL,
+    )
 
 
-class NewCandidateCategoryOutput(BaseModel):
+class NewTopLevelCategoryOutput(BaseModel):
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
     distinguishing_traits: list[str] = Field(
@@ -89,17 +129,20 @@ class NewCandidateCategoryOutput(BaseModel):
         default_factory=list,
         max_length=MAX_CITED_SAMPLE_IDS_PER_CATEGORY,
     )
-    related_existing_categories: list[str] = Field(default_factory=list, max_length=3)
+    subtechniques: list[SubtechniqueOutput] = Field(
+        default_factory=list,
+        max_length=MAX_SUBTECHNIQUES_PER_TOP_LEVEL,
+    )
 
 
 class RoundAnalysisOutput(BaseModel):
-    existing_category_matches: list[ExistingCategoryMatchOutput] = Field(
+    existing_top_level_matches: list[ExistingTopLevelCategoryMatchOutput] = Field(
         default_factory=list,
-        max_length=MAX_CATEGORY_COUNT,
+        max_length=MAX_EXISTING_TOP_LEVEL_MATCHES_PER_ROUND,
     )
-    new_candidate_categories: list[NewCandidateCategoryOutput] = Field(
+    new_top_level_categories: list[NewTopLevelCategoryOutput] = Field(
         default_factory=list,
-        max_length=MAX_NEW_CATEGORIES_PER_ROUND,
+        max_length=MAX_NEW_TOP_LEVEL_CATEGORIES_PER_ROUND,
     )
     open_questions: list[str] = Field(
         default_factory=list,
@@ -498,22 +541,36 @@ def build_analysis_payload(
     existing_categories: list[dict[str, Any]],
 ) -> str:
     lines = [
-        "Existing candidate categories before this round:",
+        "Existing top-level taxonomy categories before this round:",
     ]
     if existing_categories:
         for category in existing_categories:
             lines.append(
                 f"- {category['name']}: {category['description']} | traits={', '.join(category['distinguishing_traits'][:4])}"
             )
+            if category.get("subtechniques"):
+                lines.append(
+                    "  subtechniques: "
+                    + ", ".join(
+                        subtechnique["name"]
+                        for subtechnique in category["subtechniques"][:MAX_SUBTECHNIQUES_PER_TOP_LEVEL]
+                    )
+                )
     else:
-        lines.append("- None yet. Propose initial categories from the evidence.")
+        lines.append(
+            "- None yet. Propose initial broad top-level categories from the evidence."
+        )
 
     lines.append("")
     lines.append(
-        f"Return at most {MAX_NEW_CATEGORIES_PER_ROUND} new categories, "
-        f"at most {MAX_CITED_SAMPLE_IDS_PER_CATEGORY} supporting sample IDs per category, "
+        f"Return at most {MAX_NEW_TOP_LEVEL_CATEGORIES_PER_ROUND} new top-level categories, "
+        f"at most {MAX_SUBTECHNIQUES_PER_TOP_LEVEL} subtechniques per top-level category, "
+        f"at most {MAX_CITED_SAMPLE_IDS_PER_CATEGORY} supporting sample IDs per category or subtechnique, "
         f"and at most {MAX_OPEN_QUESTIONS} short open questions."
     )
+    lines.append("Preferred broad top-level categories:")
+    for category_name in PREFERRED_TOP_LEVEL_CATEGORIES:
+        lines.append(f"- {category_name}")
     lines.append("")
     lines.append("Round sample distribution by source:")
     for source, count in source_counts.items():
@@ -625,13 +682,13 @@ def request_round_analysis(
     user_prompt = (
         f"Analyze taxonomy discovery round {iteration_number}.\n\n"
         "Goals:\n"
-        "- Strengthen existing categories when the evidence fits them.\n"
-        "- Propose only genuinely new categories when the evidence does not fit existing ones.\n"
+        "- Strengthen existing top-level categories when the evidence fits them.\n"
+        "- Propose only genuinely new top-level categories when the evidence does not fit existing ones.\n"
         "- Keep the taxonomy mechanism-focused, not topic-focused.\n"
         "- Keep the output compact and schema-compliant.\n\n"
-        "If a new category overlaps with an existing category, list the overlapping "
-        "existing category names under related_existing_categories instead of writing "
-        "long rationale.\n\n"
+        "If an idea is narrow, variant-like, or low support, place it under a "
+        "broader top-level category as a subtechnique instead of creating a new "
+        "top-level category.\n\n"
         f"{analysis_payload}"
     )
     estimated_input_tokens = estimate_round_input_tokens(
@@ -782,27 +839,54 @@ def ensure_string(value: Any) -> str:
     return ""
 
 
-def normalize_string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return deduplicate_preserve_order(
-        stripped_value
-        for item in value
-        if isinstance(item, str)
-        if (stripped_value := item.strip())
+def build_representative_excerpts(
+    supporting_sample_ids: list[str],
+    sample_lookup: dict[str, SampledRecord],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "sample_id": sample_lookup[sample_id].sample_id,
+            "prompt_id": sample_lookup[sample_id].prompt_id,
+            "source": sample_lookup[sample_id].source,
+            "source_file": sample_lookup[sample_id].source_file,
+            "source_row": sample_lookup[sample_id].source_row,
+            "excerpt": sample_lookup[sample_id].excerpt,
+        }
+        for sample_id in supporting_sample_ids[:MAX_REPRESENTATIVE_EXCERPTS]
+        if sample_id in sample_lookup
+    ]
+
+
+def build_support_fields(
+    supporting_sample_ids: list[str],
+    sample_lookup: dict[str, SampledRecord],
+) -> dict[str, Any]:
+    prompt_ids = [sample_lookup[sample_id].prompt_id for sample_id in supporting_sample_ids]
+    source_distribution = Counter(
+        sample_lookup[sample_id].source for sample_id in supporting_sample_ids
     )
+    return {
+        "supporting_sample_ids": supporting_sample_ids,
+        "supporting_prompt_ids": prompt_ids,
+        "support_count": len(supporting_sample_ids),
+        "source_distribution": dict(sorted(source_distribution.items())),
+        "representative_excerpts": build_representative_excerpts(
+            supporting_sample_ids,
+            sample_lookup,
+        ),
+    }
 
 
-def build_category_from_llm_family(
-    family: dict[str, Any],
+def build_subtechnique_from_llm_payload(
+    payload: dict[str, Any],
     sample_lookup: dict[str, SampledRecord],
 ) -> dict[str, Any] | None:
-    name = ensure_string(family.get("name"))
-    description = ensure_string(family.get("description"))
+    name = ensure_string(payload.get("name"))
+    description = ensure_string(payload.get("description"))
     if not name or not description:
         return None
 
-    supporting_sample_ids = family.get("supporting_sample_ids", [])
+    supporting_sample_ids = payload.get("supporting_sample_ids", [])
     if not isinstance(supporting_sample_ids, list):
         return None
 
@@ -816,86 +900,164 @@ def build_category_from_llm_family(
     if not valid_sample_ids:
         return None
 
-    prompt_ids = [sample_lookup[sample_id].prompt_id for sample_id in valid_sample_ids]
-    source_distribution = Counter(
-        sample_lookup[sample_id].source for sample_id in valid_sample_ids
-    )
-    representative_excerpts = [
-        {
-            "sample_id": sample_lookup[sample_id].sample_id,
-            "prompt_id": sample_lookup[sample_id].prompt_id,
-            "source": sample_lookup[sample_id].source,
-            "source_file": sample_lookup[sample_id].source_file,
-            "source_row": sample_lookup[sample_id].source_row,
-            "excerpt": sample_lookup[sample_id].excerpt,
-        }
-        for sample_id in valid_sample_ids[:MAX_REPRESENTATIVE_EXCERPTS]
-    ]
-
-    return {
+    subtechnique = {
         "name": name,
         "description": description,
         "distinguishing_traits": normalize_trait_list(
-            family.get("distinguishing_traits", [])
+            payload.get("distinguishing_traits", [])
         ),
-        "related_existing_categories": normalize_string_list(
-            family.get("related_existing_categories", [])
-        ),
-        "supporting_sample_ids": valid_sample_ids,
-        "supporting_prompt_ids": prompt_ids,
-        "support_count": len(valid_sample_ids),
-        "source_distribution": dict(sorted(source_distribution.items())),
-        "representative_excerpts": representative_excerpts,
     }
+    subtechnique.update(build_support_fields(valid_sample_ids, sample_lookup))
+    return subtechnique
 
 
-def merge_existing_category_match(
+def build_top_level_category_from_llm_payload(
+    payload: dict[str, Any],
+    sample_lookup: dict[str, SampledRecord],
+) -> dict[str, Any] | None:
+    name = ensure_string(payload.get("name"))
+    description = ensure_string(payload.get("description"))
+    if not name or not description:
+        return None
+
+    direct_supporting_sample_ids = payload.get("supporting_sample_ids", [])
+    if not isinstance(direct_supporting_sample_ids, list):
+        direct_supporting_sample_ids = []
+
+    valid_direct_supporting_sample_ids = deduplicate_preserve_order(
+        [
+            sample_id
+            for sample_id in direct_supporting_sample_ids
+            if isinstance(sample_id, str) and sample_id in sample_lookup
+        ]
+    )[:MAX_CITED_SAMPLE_IDS_PER_CATEGORY]
+
+    subtechnique_payloads = payload.get("subtechniques", [])
+    if not isinstance(subtechnique_payloads, list):
+        subtechnique_payloads = []
+
+    subtechniques = [
+        subtechnique
+        for subtechnique in (
+            build_subtechnique_from_llm_payload(subtechnique_payload, sample_lookup)
+            for subtechnique_payload in subtechnique_payloads
+            if isinstance(subtechnique_payload, dict)
+        )
+        if subtechnique is not None
+    ][:MAX_SUBTECHNIQUES_PER_TOP_LEVEL]
+
+    if not valid_direct_supporting_sample_ids and not subtechniques:
+        return None
+
+    category = {
+        "name": name,
+        "description": description,
+        "distinguishing_traits": normalize_trait_list(
+            payload.get("distinguishing_traits", [])
+        ),
+        "direct_supporting_sample_ids": valid_direct_supporting_sample_ids,
+        "subtechniques": subtechniques,
+    }
+    refresh_top_level_category(category, sample_lookup)
+    return category
+
+
+def refresh_top_level_category(
+    category: dict[str, Any],
+    sample_lookup: dict[str, SampledRecord],
+) -> None:
+    aggregate_supporting_sample_ids = deduplicate_preserve_order(
+        category.get("direct_supporting_sample_ids", [])
+        + [
+            sample_id
+            for subtechnique in category.get("subtechniques", [])
+            for sample_id in subtechnique.get("supporting_sample_ids", [])
+        ]
+    )[:MAX_CITED_SAMPLE_IDS_PER_CATEGORY]
+
+    category.update(build_support_fields(aggregate_supporting_sample_ids, sample_lookup))
+    category["subtechniques"] = sorted(
+        category.get("subtechniques", []),
+        key=lambda subtechnique: (
+            subtechnique.get("support_count", 0),
+            subtechnique.get("name", "").lower(),
+        ),
+        reverse=True,
+    )[:MAX_SUBTECHNIQUES_PER_TOP_LEVEL]
+
+
+def merge_subtechnique(
+    existing_subtechnique: dict[str, Any],
+    incoming_subtechnique: dict[str, Any],
+    sample_lookup: dict[str, SampledRecord],
+) -> None:
+    existing_subtechnique["supporting_sample_ids"] = deduplicate_preserve_order(
+        existing_subtechnique["supporting_sample_ids"]
+        + incoming_subtechnique["supporting_sample_ids"]
+    )[:MAX_CITED_SAMPLE_IDS_PER_CATEGORY]
+    existing_subtechnique["distinguishing_traits"] = deduplicate_preserve_order(
+        existing_subtechnique["distinguishing_traits"]
+        + incoming_subtechnique["distinguishing_traits"]
+    )
+    existing_subtechnique.update(
+        build_support_fields(existing_subtechnique["supporting_sample_ids"], sample_lookup)
+    )
+
+
+def merge_top_level_category_match(
     category: dict[str, Any],
     match_payload: dict[str, Any],
     sample_lookup: dict[str, SampledRecord],
 ) -> int:
-    supporting_sample_ids = match_payload.get("supporting_sample_ids", [])
-    if not isinstance(supporting_sample_ids, list):
-        supporting_sample_ids = []
+    direct_supporting_sample_ids = match_payload.get("supporting_sample_ids", [])
+    if not isinstance(direct_supporting_sample_ids, list):
+        direct_supporting_sample_ids = []
 
-    valid_sample_ids = [
+    valid_direct_supporting_sample_ids = [
         sample_id
-        for sample_id in supporting_sample_ids
+        for sample_id in direct_supporting_sample_ids
         if isinstance(sample_id, str) and sample_id in sample_lookup
     ]
-    if not valid_sample_ids:
-        return 0
 
-    before_count = len(category["supporting_sample_ids"])
-    category["supporting_sample_ids"] = deduplicate_preserve_order(
-        category["supporting_sample_ids"] + valid_sample_ids
+    before_count = len(category.get("supporting_sample_ids", []))
+    category["direct_supporting_sample_ids"] = deduplicate_preserve_order(
+        category.get("direct_supporting_sample_ids", []) + valid_direct_supporting_sample_ids
     )[:MAX_CITED_SAMPLE_IDS_PER_CATEGORY]
-    category["supporting_prompt_ids"] = [
-        sample_lookup[sample_id].prompt_id
-        for sample_id in category["supporting_sample_ids"]
-    ]
-
-    refined_traits = normalize_trait_list(match_payload.get("refined_traits", []))
     category["distinguishing_traits"] = deduplicate_preserve_order(
-        category["distinguishing_traits"] + refined_traits
+        category["distinguishing_traits"]
+        + normalize_trait_list(match_payload.get("refined_traits", []))
     )
 
-    source_distribution = Counter(
-        sample_lookup[sample_id].source for sample_id in category["supporting_sample_ids"]
-    )
-    category["support_count"] = len(category["supporting_sample_ids"])
-    category["source_distribution"] = dict(sorted(source_distribution.items()))
-    category["representative_excerpts"] = [
-        {
-            "sample_id": sample_lookup[sample_id].sample_id,
-            "prompt_id": sample_lookup[sample_id].prompt_id,
-            "source": sample_lookup[sample_id].source,
-            "source_file": sample_lookup[sample_id].source_file,
-            "source_row": sample_lookup[sample_id].source_row,
-            "excerpt": sample_lookup[sample_id].excerpt,
-        }
-        for sample_id in category["supporting_sample_ids"][:MAX_REPRESENTATIVE_EXCERPTS]
-    ]
+    subtechnique_payloads = match_payload.get("subtechniques", [])
+    if not isinstance(subtechnique_payloads, list):
+        subtechnique_payloads = []
+
+    subtechnique_lookup = {
+        canonical_category_key(subtechnique["name"]): subtechnique
+        for subtechnique in category.get("subtechniques", [])
+    }
+
+    for subtechnique_payload in subtechnique_payloads:
+        if not isinstance(subtechnique_payload, dict):
+            continue
+        subtechnique = build_subtechnique_from_llm_payload(
+            subtechnique_payload,
+            sample_lookup,
+        )
+        if subtechnique is None:
+            continue
+        subtechnique_key = canonical_category_key(subtechnique["name"])
+        if subtechnique_key in subtechnique_lookup:
+            merge_subtechnique(
+                subtechnique_lookup[subtechnique_key],
+                subtechnique,
+                sample_lookup,
+            )
+            continue
+        category.setdefault("subtechniques", []).append(subtechnique)
+        subtechnique_lookup[subtechnique_key] = subtechnique
+
+    refresh_top_level_category(category, sample_lookup)
     return max(len(category["supporting_sample_ids"]) - before_count, 0)
 
 
@@ -907,17 +1069,50 @@ def build_existing_categories_payload(
             "name": category["name"],
             "description": category["description"],
             "distinguishing_traits": category["distinguishing_traits"],
+            "subtechniques": [
+                {
+                    "name": subtechnique["name"],
+                    "description": subtechnique["description"],
+                }
+                for subtechnique in category.get("subtechniques", [])
+            ],
         }
         for category in categories
     ]
+
+
+def serialize_top_level_category(category: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": category["name"],
+        "description": category["description"],
+        "distinguishing_traits": category["distinguishing_traits"],
+        "supporting_sample_ids": category["supporting_sample_ids"],
+        "supporting_prompt_ids": category["supporting_prompt_ids"],
+        "support_count": category["support_count"],
+        "source_distribution": category["source_distribution"],
+        "representative_excerpts": category["representative_excerpts"],
+        "subtechniques": [
+            {
+                "name": subtechnique["name"],
+                "description": subtechnique["description"],
+                "distinguishing_traits": subtechnique["distinguishing_traits"],
+                "supporting_sample_ids": subtechnique["supporting_sample_ids"],
+                "supporting_prompt_ids": subtechnique["supporting_prompt_ids"],
+                "support_count": subtechnique["support_count"],
+                "source_distribution": subtechnique["source_distribution"],
+                "representative_excerpts": subtechnique["representative_excerpts"],
+            }
+            for subtechnique in category.get("subtechniques", [])
+        ],
+    }
 
 
 def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
     client = get_anthropic_client()
     analyzed_prompt_ids: set[str] = set()
     all_sample_lookup: dict[str, SampledRecord] = {}
-    categories: list[dict[str, Any]] = []
-    category_lookup: dict[str, dict[str, Any]] = {}
+    top_level_categories: list[dict[str, Any]] = []
+    top_level_category_lookup: dict[str, dict[str, Any]] = {}
     iterations: list[dict[str, Any]] = []
     open_questions: list[str] = []
     no_new_category_streak = 0
@@ -940,7 +1135,7 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
             saturation_reason = "no_unseen_records_remaining"
             break
 
-        existing_categories_before_round = len(categories)
+        existing_categories_before_round = len(top_level_categories)
         sample_lookup = {
             sample.sample_id: sample for sample in sample_selection.samples
         }
@@ -954,7 +1149,7 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
             iteration_number=iteration_number,
             samples=sample_selection.samples,
             source_counts=sample_selection.source_counts,
-            existing_categories=build_existing_categories_payload(categories),
+            existing_categories=build_existing_categories_payload(top_level_categories),
         )
         llm_payload = round_analysis.payload.model_dump()
         if round_analysis.estimated_input_tokens is not None:
@@ -970,7 +1165,7 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
                 if isinstance(question, str) and question.strip()
             )
 
-        existing_matches = llm_payload.get("existing_category_matches", [])
+        existing_matches = llm_payload.get("existing_top_level_matches", [])
         if not isinstance(existing_matches, list):
             existing_matches = []
         evidence_added_to_existing = 0
@@ -978,64 +1173,60 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
         for match in existing_matches:
             if not isinstance(match, dict):
                 continue
-            match_name = ensure_string(match.get("name"))
+            match_name = ensure_string(match.get("top_level_name"))
             if not match_name:
                 continue
-            category = category_lookup.get(canonical_category_key(match_name))
+            category = top_level_category_lookup.get(canonical_category_key(match_name))
             if category is None:
                 continue
-            evidence_added_to_existing += merge_existing_category_match(
+            evidence_added_to_existing += merge_top_level_category_match(
                 category=category,
                 match_payload=match,
                 sample_lookup=all_sample_lookup,
             )
             matched_category_names.append(category["name"])
 
-        new_candidate_payloads = llm_payload.get("new_candidate_categories", [])
+        new_candidate_payloads = llm_payload.get("new_top_level_categories", [])
         if not isinstance(new_candidate_payloads, list):
             new_candidate_payloads = []
 
         new_categories_added = []
-        for family in new_candidate_payloads:
-            if not isinstance(family, dict):
+        for top_level_payload in new_candidate_payloads:
+            if not isinstance(top_level_payload, dict):
                 continue
-            category = build_category_from_llm_family(
-                family=family,
+            category = build_top_level_category_from_llm_payload(
+                payload=top_level_payload,
                 sample_lookup=sample_lookup,
             )
             if category is None:
                 continue
 
             category_key = canonical_category_key(category["name"])
-            if category_key in category_lookup:
-                existing_category = category_lookup[category_key]
-                merge_existing_category_match(
+            if category_key in top_level_category_lookup:
+                existing_category = top_level_category_lookup[category_key]
+                merge_top_level_category_match(
                     category=existing_category,
                     match_payload={
                         "supporting_sample_ids": category["supporting_sample_ids"],
                         "refined_traits": category["distinguishing_traits"],
+                        "subtechniques": category["subtechniques"],
                     },
                     sample_lookup=all_sample_lookup,
                 )
-                existing_category["related_existing_categories"] = (
-                    deduplicate_preserve_order(
-                        existing_category.get("related_existing_categories", [])
-                        + category.get("related_existing_categories", [])
-                    )
-                )
                 continue
 
-            categories.append(category)
-            category_lookup[category_key] = category
+            top_level_categories.append(category)
+            top_level_category_lookup[category_key] = category
             new_categories_added.append(category["name"])
 
-        categories.sort(
+        top_level_categories.sort(
             key=lambda category: (category["support_count"], category["name"].lower()),
             reverse=True,
         )
-        categories = categories[:MAX_CATEGORY_COUNT]
-        category_lookup = {
-            canonical_category_key(category["name"]): category for category in categories
+        top_level_categories = top_level_categories[:MAX_TOP_LEVEL_CATEGORY_COUNT]
+        top_level_category_lookup = {
+            canonical_category_key(category["name"]): category
+            for category in top_level_categories
         }
 
         valid_new_category_count = len(new_categories_added)
@@ -1054,13 +1245,13 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
                 "round_source_counts": sample_selection.source_counts,
                 "round_stratum_counts": sample_selection.stratum_counts,
                 "effective_max_sample_count": sample_selection.effective_max_sample_count,
-                "existing_categories_before_round": existing_categories_before_round,
-                "existing_category_matches": deduplicate_preserve_order(
+                "existing_top_level_categories_before_round": existing_categories_before_round,
+                "existing_top_level_matches": deduplicate_preserve_order(
                     matched_category_names
                 ),
-                "new_category_names": new_categories_added,
-                "valid_new_category_count": valid_new_category_count,
-                "evidence_added_to_existing_categories": evidence_added_to_existing,
+                "new_top_level_category_names": new_categories_added,
+                "valid_new_top_level_category_count": valid_new_category_count,
+                "evidence_added_to_existing_top_levels": evidence_added_to_existing,
                 "llm_usage": {
                     "structured_output_enabled": True,
                     "schema": "RoundAnalysisOutput",
@@ -1073,7 +1264,7 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
         )
 
         logger.info(
-            "Taxonomy discovery round %s analyzed %s/%s requested samples, added %s new categories, streak=%s",
+            "Taxonomy discovery round %s analyzed %s/%s requested samples, added %s new top-level categories, streak=%s",
             iteration_number,
             sample_selection.actual_sample_count,
             sample_selection.requested_sample_size,
@@ -1090,7 +1281,10 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
         saturation_reason = "max_iterations_reached"
 
     return {
-        "categories": categories,
+        "top_level_categories": [
+            serialize_top_level_category(category)
+            for category in top_level_categories
+        ],
         "iterations": iterations,
         "open_questions": deduplicate_preserve_order(open_questions),
         "analyzed_sample_count": len(analyzed_prompt_ids),
@@ -1119,7 +1313,7 @@ def run_iterative_discovery(records: list[NormalizedRecord]) -> dict[str, Any]:
 def discover_taxonomy() -> dict[str, Any]:
     records = load_normalized_records()
     discovery_result = run_iterative_discovery(records)
-    if not discovery_result["categories"]:
+    if not discovery_result["top_level_categories"]:
         raise SystemExit(
             "Taxonomy discovery did not produce any validated proposed categories."
         )
@@ -1128,7 +1322,7 @@ def discover_taxonomy() -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "normalized_path": str(NORMALIZED_PATH),
         "proposed_taxonomy_path": str(PROPOSED_TAXONOMY_PATH),
-        "report_version": 3,
+        "report_version": 4,
         "human_review_required": True,
         "model": {
             "provider": "anthropic",
@@ -1152,7 +1346,7 @@ def discover_taxonomy() -> dict[str, Any]:
         },
         "saturation_status": discovery_result["saturation_status"],
         "iterations": discovery_result["iterations"],
-        "categories": discovery_result["categories"],
+        "top_level_categories": discovery_result["top_level_categories"],
         "analyzed_sample_count": discovery_result["analyzed_sample_count"],
         "total_normalized_records": len(records),
         "source_record_counts": discovery_result["total_source_counts"],
@@ -1161,16 +1355,18 @@ def discover_taxonomy() -> dict[str, Any]:
             "schema_backed": True,
             "schema": "RoundAnalysisOutput",
             "llm_owned_fields": [
-                "existing_category_matches.name",
-                "existing_category_matches.supporting_sample_ids",
-                "existing_category_matches.refined_traits",
-                "new_candidate_categories.name",
-                "new_candidate_categories.description",
-                "new_candidate_categories.distinguishing_traits",
-                "new_candidate_categories.supporting_sample_ids",
-                "new_candidate_categories.related_existing_categories",
+                "existing_top_level_matches.top_level_name",
+                "existing_top_level_matches.supporting_sample_ids",
+                "existing_top_level_matches.refined_traits",
+                "existing_top_level_matches.subtechniques",
+                "new_top_level_categories.name",
+                "new_top_level_categories.description",
+                "new_top_level_categories.distinguishing_traits",
+                "new_top_level_categories.supporting_sample_ids",
+                "new_top_level_categories.subtechniques",
                 "open_questions",
             ],
+            "taxonomy_shape": "hierarchical_top_level_categories_with_subtechniques",
             "removed_freeform_fields": ["round_summary", "review_notes"],
         },
         "analysis_constraints": {
@@ -1210,8 +1406,8 @@ def main() -> int:
     report = discover_taxonomy()
     write_proposed_taxonomy(report)
     logger.info(
-        "Wrote %s proposed taxonomy categories from %s analyzed samples over %s iterations to %s",
-        len(report["categories"]),
+        "Wrote %s proposed top-level taxonomy categories from %s analyzed samples over %s iterations to %s",
+        len(report["top_level_categories"]),
         report["analyzed_sample_count"],
         report["saturation_status"]["completed_iterations"],
         PROPOSED_TAXONOMY_PATH,

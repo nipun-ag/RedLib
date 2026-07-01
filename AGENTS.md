@@ -227,8 +227,8 @@ Phase 1 - In Development
   `data/corpus/normalized.jsonl`
 - `discover_taxonomy.py` is implemented as an LLM-assisted,
   source-aware, stratified iterative stage with schema-backed
-  structured outputs and minimum-plus-proportional sample allocation
-  that writes a human-review taxonomy proposal to
+  structured outputs, minimum-plus-proportional sample allocation, and
+  a constrained hierarchical taxonomy proposal that writes to
   `data/corpus/proposed_taxonomy.json`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts

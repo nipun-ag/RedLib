@@ -1,6 +1,54 @@
 # RedLib — Progress Log
 
 ## 2026-07-01
+Constrained taxonomy discovery to produce a hierarchical jailbreak
+taxonomy instead of a loose flat category list.
+
+Issue:
+- The previous `discover_taxonomy.py` output shape still encouraged a
+  relatively loose flat list of categories, which made it easier for
+  narrow variants or one-off framing patterns to surface as peers of
+  broader jailbreak mechanisms.
+- RedLib needs a proposal shape that favors stable red-team mechanism
+  families at the top level while capturing simulations, alternate
+  universes, sandbox variants, and similar prompt patterns as
+  subtechniques.
+
+Change:
+- Refactored the taxonomy discovery structured-output schema from a flat
+  category proposal into a hierarchical proposal with broad top-level
+  categories and nested subtechniques.
+- Updated the taxonomy discovery system prompt to bias toward durable
+  mechanism families such as instruction override, persona adoption,
+  authority spoofing, fictional or hypothetical framing, obfuscation,
+  legitimate-context framing, and dual-response manipulation.
+- Added prompt constraints that explicitly prefer merging over creating
+  new top-level labels and demote narrow or low-support ideas into
+  subtechniques.
+- Reworked the Python merge and serialization logic so top-level support
+  counts, source distributions, prompt IDs, and representative excerpts
+  are still computed deterministically while the final artifact becomes
+  hierarchical.
+
+Why this implementation was needed:
+- A hierarchical proposal is closer to how red-team practitioners
+  reason about jailbreak mechanisms: broad families stay stable while
+  prompt variants live underneath them.
+- Constraining the top level reduces taxonomy sprawl and makes the
+  later human review and classification stages easier to operationalize.
+
+Verification:
+- Confirmed `discover_taxonomy.py` now writes
+  `top_level_categories` with nested `subtechniques` rather than a flat
+  `categories` list.
+- Updated architecture notes and current-state notes to reflect the new
+  hierarchical proposal shape.
+- Live runtime verification remains environment-dependent because the
+  local Python launcher is still broken in this shell session.
+
+---
+
+## 2026-07-01
 Raised the default taxonomy structured-output budget and hardened
 structured-output failure handling.
 

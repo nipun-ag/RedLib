@@ -196,6 +196,12 @@ Qdrant
   representative excerpts, or long summaries; Python computes those
   deterministically from cited sample IDs after the model makes
   category judgments.
+- The proposed taxonomy is hierarchical rather than flat: durable
+  jailbreak mechanism families appear at the top level while narrower
+  prompt variants are captured as subtechniques beneath them.
+- Discovery is constrained to prefer recognizable red-team terminology,
+  repeated evidence, and merges into broad families over proliferating
+  one-off top-level labels.
 - Human review exists between discovery and classification so the
   taxonomy reflects research judgment, not only automated clustering.
 - `classify_corpus.py` exists so taxonomy application is consistent,
@@ -250,6 +256,8 @@ Qdrant
 
 ### `proposed_taxonomy.json`
 - Iterative taxonomy proposal derived from the normalized corpus
+- Stores a hierarchical taxonomy with broad top-level mechanism
+  families and supporting subtechniques
 - Records sampling strategy, iteration history, and saturation status
 - Uses code-computed support counts and source distribution from cited
   analyzed samples rather than model-invented numbers
