@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,9 @@ MAX_ITERATIONS = 4
 ROUND_SAMPLE_SIZE = int(
     os.environ.get("REDLIB_TAXONOMY_SAMPLE_SIZE", "500")
 )
-ROUND_MAX_OUTPUT_TOKENS = 1800
+ROUND_MAX_OUTPUT_TOKENS = int(
+    os.environ.get("REDLIB_TAXONOMY_MAX_OUTPUT_TOKENS", "4000")
+)
 MIN_SAMPLES_PER_SOURCE_PER_ROUND = 6
 MAX_SOURCE_SHARE_PER_ROUND = 0.35
 SATURATION_STREAK_THRESHOLD = 2
@@ -555,6 +557,7 @@ def write_structured_output_debug(
     error_message: str,
     response: Any | None = None,
     estimated_input_tokens: int | None = None,
+    extra_context: dict[str, Any] | None = None,
 ) -> Path:
     TAXONOMY_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -581,6 +584,7 @@ def write_structured_output_debug(
             else None
         ),
         "raw_response": extract_text_content(response) if response else "",
+        "extra_context": extra_context or {},
     }
     with debug_path.open("w", encoding="utf-8", newline="\n") as debug_file:
         json.dump(payload, debug_file, indent=2, ensure_ascii=False)
@@ -643,15 +647,75 @@ def request_round_analysis(
         estimated_input_tokens if estimated_input_tokens is not None else "unknown",
         ROUND_MAX_OUTPUT_TOKENS,
     )
-    response = client.messages.parse(
-        model=MODEL_NAME,
-        max_tokens=ROUND_MAX_OUTPUT_TOKENS,
-        temperature=0,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-        output_format=RoundAnalysisOutput,
-    )
+    try:
+        response = client.messages.parse(
+            model=MODEL_NAME,
+            max_tokens=ROUND_MAX_OUTPUT_TOKENS,
+            temperature=0,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+            output_format=RoundAnalysisOutput,
+        )
+    except (ValidationError, ValueError) as error:
+        logger.error(
+            "Structured taxonomy output failed validation in round %s. "
+            "Likely cause: output truncation or structured-output validation failure. %s",
+            iteration_number,
+            error,
+        )
+        debug_path = write_structured_output_debug(
+            iteration_number=iteration_number,
+            response_stage="structured_output_validation_failure",
+            error_message=(
+                "Structured taxonomy output failed validation before a parsed "
+                f"response was returned: {error}"
+            ),
+            estimated_input_tokens=estimated_input_tokens,
+            extra_context={
+                "likely_cause": (
+                    "output_truncation_or_structured_output_validation_failure"
+                ),
+                "sample_count": len(samples),
+                "source_counts": source_counts,
+                "max_output_tokens": ROUND_MAX_OUTPUT_TOKENS,
+                "exception_type": type(error).__name__,
+            },
+        )
+        raise SystemExit(
+            "Taxonomy discovery structured output failed validation for "
+            f"round {iteration_number}. Likely cause: output truncation or "
+            f"schema validation failure. Saved debug response to {debug_path}."
+        ) from error
+    except Exception as error:
+        logger.error(
+            "Structured taxonomy output request failed in round %s: %s",
+            iteration_number,
+            error,
+        )
+        debug_path = write_structured_output_debug(
+            iteration_number=iteration_number,
+            response_stage="structured_output_request_failure",
+            error_message=f"Structured taxonomy request failed: {error}",
+            estimated_input_tokens=estimated_input_tokens,
+            extra_context={
+                "sample_count": len(samples),
+                "source_counts": source_counts,
+                "max_output_tokens": ROUND_MAX_OUTPUT_TOKENS,
+                "exception_type": type(error).__name__,
+            },
+        )
+        raise SystemExit(
+            "Taxonomy discovery request failed before a structured response "
+            f"was parsed for round {iteration_number}. Saved debug response "
+            f"to {debug_path}."
+        ) from error
     if response.stop_reason == "max_tokens" or response.parsed_output is None:
+        logger.error(
+            "Structured taxonomy output was incomplete in round %s. "
+            "Likely cause: output truncation. stop_reason=%s",
+            iteration_number,
+            response.stop_reason,
+        )
         error_message = (
             "Structured taxonomy output was incomplete or missing. "
             f"stop_reason={response.stop_reason}"
@@ -662,6 +726,12 @@ def request_round_analysis(
             error_message=error_message,
             response=response,
             estimated_input_tokens=estimated_input_tokens,
+            extra_context={
+                "likely_cause": "output_truncation_or_missing_structured_output",
+                "sample_count": len(samples),
+                "source_counts": source_counts,
+                "max_output_tokens": ROUND_MAX_OUTPUT_TOKENS,
+            },
         )
         raise SystemExit(
             "Taxonomy discovery did not receive a complete structured output for "

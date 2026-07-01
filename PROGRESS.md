@@ -1,5 +1,46 @@
 # RedLib — Progress Log
 
+## 2026-07-01
+Raised the default taxonomy structured-output budget and hardened
+structured-output failure handling.
+
+Issue:
+- A later `discover_taxonomy.py` run reached round 4 and failed with a
+  structured-output validation error:
+  `Invalid JSON: EOF while parsing a list`.
+- The round log still showed `max output tokens=1800`, which left too
+  little headroom for larger structured responses and made truncation
+  failures more likely.
+
+Change:
+- Replaced the hardcoded taxonomy output budget with
+  `REDLIB_TAXONOMY_MAX_OUTPUT_TOKENS`, defaulting to `4000`.
+- Updated the structured-output request path so validation failures
+  around `client.messages.parse(...)` are caught explicitly.
+- Added clearer logging for likely truncation or structured-output
+  validation failures.
+- Extended taxonomy debug artifacts under `data/corpus/taxonomy_debug/`
+  with extra failure context such as sample count, source counts,
+  exception type, and the active output-token budget.
+
+Why this implementation was needed:
+- The truncation failure happened before a usable parsed structured
+  response was returned, so the stage needed to fail cleanly with a
+  preserved debug artifact instead of surfacing a raw validation stack
+  trace.
+- Making the output budget configurable keeps the structured-output
+  architecture intact while allowing larger rounds to request enough
+  output space without code edits.
+
+Verification:
+- Confirmed `discover_taxonomy.py` now reads
+  `REDLIB_TAXONOMY_MAX_OUTPUT_TOKENS` and defaults to `4000`.
+- Confirmed the hardcoded `1800` output budget was removed.
+- Live runtime verification remains environment-dependent because the
+  local Python launcher is still broken in this shell session.
+
+---
+
 ## 2026-06-29
 Refactored taxonomy discovery to use structured outputs, fuller sample
 utilization, and a smaller model contract.
