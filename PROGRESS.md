@@ -1484,3 +1484,46 @@ Verification:
   without AdvBench.
 
 ---
+## 2026-07-07
+Reduced classification retry churn by tightening rationale instructions
+instead of relying on repeated batch retries.
+
+Issue:
+- `classify_corpus.py` was repeatedly retrying and recursively splitting
+  otherwise-correct batches because Claude often returned rationale
+  strings that were longer than the intended structured-output shape.
+- The dominant classification decision was usually correct; the failure
+  mode was mostly rationale verbosity, which wasted API calls and slowed
+  full-corpus classification substantially.
+
+Change:
+- Tightened the classification system prompt so rationale is explicitly
+  constrained to one concise sentence, objective language, 120
+  characters or fewer, the dominant decision only, and no extra
+  justification or discussion.
+- Tightened the user-visible batch prompt with the same rationale rules
+  so the output contract is reinforced in both prompt layers.
+- Increased the schema ceiling for `rationale` modestly to `300`
+  characters so small structured-output variance can pass without
+  encouraging long explanations.
+- Removed the silent Python-side `rationale[:240]` truncation so
+  overlong model output now fails transparently through structured
+  validation instead of being masked after parsing.
+
+Why this implementation was needed:
+- The retry and recursive split machinery should be reserved for genuine
+  request failures, not triggered routinely by verbose one-field model
+  output.
+- Tightening the prompt contract is the right fix because the
+  classification content was already mostly correct; the system mainly
+  needed a clearer rationale budget.
+
+Verification:
+- Confirmed structured outputs remain active through
+  `client.messages.parse(..., output_format=BatchClassificationOutput)`.
+- Confirmed Pydantic validation still governs `rationale`, now with a
+  modestly wider schema cap and no silent truncation path in Python.
+- Live 100-record smoke-test verification remains blocked in this shell
+  because no usable Python launcher is available.
+
+---

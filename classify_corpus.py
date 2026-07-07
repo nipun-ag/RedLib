@@ -43,6 +43,7 @@ INPUT_COST_PER_MILLION_USD = float(
 OUTPUT_COST_PER_MILLION_USD = float(
     os.environ.get("REDLIB_CLASSIFY_OUTPUT_COST_PER_MILLION_USD", "0")
 )
+RATIONALE_SCHEMA_MAX_CHARS = 300
 
 PRIMARY_FALLBACK_CATEGORY = "Unclear / Needs Review"
 FALLBACK_RATIONALE = (
@@ -73,7 +74,11 @@ Hard rules:
 - Primary category means the mechanism that most directly contributes to bypassing model safety behavior.
 - Supporting traits are secondary signals only. Do not promote a secondary trait into the primary category unless it is the main bypass mechanism.
 - If multiple mechanisms appear, choose the single dominant one and use supporting traits for the rest.
-- Keep rationale short, concrete, and mechanism-focused.
+- Rationale must be exactly one concise sentence.
+- Use objective language only.
+- Keep rationale at 120 characters or fewer.
+- Explain only the dominant classification decision.
+- Do not add extra justification, caveats, or discussion.
 - Do not reproduce or quote long prompt text.
 """
 
@@ -84,7 +89,7 @@ class PromptClassificationOutput(BaseModel):
     subtechnique: str | None = None
     supporting_traits: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str = Field(min_length=1, max_length=240)
+    rationale: str = Field(min_length=1, max_length=RATIONALE_SCHEMA_MAX_CHARS)
 
 
 class BatchClassificationOutput(BaseModel):
@@ -561,7 +566,10 @@ def build_batch_prompt(
         "- subtechnique must be null unless an approved subtechnique under the chosen primary category clearly fits.",
         "- supporting_traits must only contain items from the allowed supporting-traits list.",
         "- confidence is a float from 0.0 to 1.0.",
-        "- rationale must stay short and explain the dominant mechanism.",
+        "- rationale must be one concise objective sentence.",
+        "- rationale must be at most 120 characters.",
+        "- rationale must explain only the dominant classification decision.",
+        "- rationale must not include extra justification or discussion.",
         "",
         "Classification guidance:",
         "- Choose the mechanism that most directly drives the jailbreak attempt.",
@@ -664,7 +672,7 @@ def validate_classification_output(
             subtechnique=resolved_subtechnique,
             supporting_traits=supporting_traits,
             confidence=round(min(max(item.confidence, 0.0), 1.0), 3),
-            rationale=rationale[:240],
+            rationale=rationale,
         )
 
     missing_prompt_ids = expected_prompt_ids.difference(classification_lookup)
