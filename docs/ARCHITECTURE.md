@@ -267,6 +267,32 @@ Qdrant
 ### `classified.jsonl`
 - Final approved corpus with applied taxonomy labels
 - Only corpus artifact consumed by `ingest.py`
+- Preserves normalized-record provenance and raw source fields
+- Stores one dominant primary jailbreak mechanism per prompt plus
+  optional subtechnique, optional supporting traits, confidence, and a
+  short rationale
+- Produced by `classify_corpus.py` through schema-backed structured
+  outputs, resume-safe checkpointing, incremental staging writes, retry
+  tracking, and final atomic replacement of the output artifact
+
+Classified record shape:
+```json
+{
+  "prompt_id": "string",
+  "source": "string",
+  "source_file": "string",
+  "source_row": 0,
+  "text": "string",
+  "raw_fields": {},
+  "classification": {
+    "primary_category": "string",
+    "subtechnique": "string | null",
+    "supporting_traits": ["string"],
+    "confidence": 0.0,
+    "rationale": "string"
+  }
+}
+```
 
 ---
 

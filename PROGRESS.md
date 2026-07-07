@@ -1387,3 +1387,59 @@ Result:
   make metadata filtering work.
 
 ---
+## 2026-07-07
+Implemented `classify_corpus.py` as the corpus-wide taxonomy
+application stage.
+
+Issue:
+- The staged corpus pipeline already had normalized prompt preparation
+  and hierarchical taxonomy discovery, but it still lacked the
+  operational stage that applies the approved taxonomy across every
+  normalized prompt and produces the final classified corpus artifact.
+- The repository also still contained older fixed-label classification
+  logic in `classifier.py` and `ingest.py` that does not match the
+  newer taxonomy-first architecture or the richer classification output
+  shape needed for auditability.
+
+Change:
+- Added a new `classify_corpus.py` that reads
+  `data/corpus/normalized.jsonl` plus
+  `data/corpus/proposed_taxonomy.json` and writes
+  `data/corpus/classified.jsonl`.
+- Implemented Anthropic schema-backed structured outputs via
+  `client.messages.parse(..., output_format=BatchClassificationOutput)`
+  instead of free-form JSON parsing.
+- Enforced one dominant primary category per prompt, optional approved
+  subtechnique, controlled supporting traits, confidence, and short
+  rationale, with a code-defined fallback category
+  `Unclear / Needs Review` when classification cannot be validated.
+- Added resume-safe checkpointing, append-only staging writes,
+  incremental progress persistence, retry accounting, failure logging,
+  structured-output debug artifacts, and recursive batch splitting when
+  token estimates or repeated failures make a full batch unsafe.
+- Kept provenance intact by preserving every normalized record field in
+  the final output and only appending the nested `classification`
+  object.
+- Updated `docs/ARCHITECTURE.md` to document the final
+  `classified.jsonl` record shape and updated `AGENTS.md` current-state
+  notes to reflect the implemented stage.
+
+Why this implementation was needed:
+- Classification is a distinct stage boundary in RedLib's corpus design:
+  taxonomy discovery proposes the label system, while classification
+  applies that approved system consistently at full-corpus scale.
+- Given the corpus size, interruption-safe staging and checkpointing
+  are not optional implementation details; they are required to make the
+  stage practical and auditable.
+- Using structured outputs keeps category/subtechnique control in the
+  approved taxonomy instead of relying on free-form label generation.
+
+Verification:
+- Confirmed the new script validates normalized and taxonomy inputs,
+  streams normalized records in batches, and writes only staging/final
+  classified artifacts plus checkpoint/debug sidecars.
+- Basic runtime verification is limited to static validation in-session;
+  a live end-to-end classification run still depends on Doppler-managed
+  Anthropic credentials and network access at execution time.
+
+---

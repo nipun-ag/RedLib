@@ -230,6 +230,13 @@ Phase 1 - In Development
   structured outputs, minimum-plus-proportional sample allocation, and
   a constrained hierarchical taxonomy proposal that writes to
   `data/corpus/proposed_taxonomy.json`
+- `classify_corpus.py` is implemented as a corpus-wide taxonomy
+  application stage that reads `normalized.jsonl` plus
+  `proposed_taxonomy.json`, uses schema-backed Anthropic structured
+  outputs with dominant-primary classification rules, writes
+  `data/corpus/classified.jsonl`, and supports resume-safe
+  checkpointing, incremental staging, retry logging, and controlled
+  fallback to `Unclear / Needs Review`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only
