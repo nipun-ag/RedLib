@@ -72,6 +72,7 @@ Your job is to assign one dominant primary jailbreak mechanism per prompt.
 
 Hard rules:
 - Return structured output only.
+- Return batch_index values only for prompt identity. Do not return prompt_id values.
 - Choose exactly one primary category from the provided list, or the explicit fallback category when no approved category fits.
 - Do not invent new primary categories, subtechniques, or supporting traits.
 - Primary category means the mechanism that most directly contributes to bypassing model safety behavior.
@@ -93,7 +94,7 @@ Hard rules:
 
 
 class PromptClassificationOutput(BaseModel):
-    prompt_id: str = Field(min_length=1)
+    batch_index: int = Field(ge=0)
     primary_category: str = Field(min_length=1)
     subtechnique: str | None = None
     supporting_traits: list[str] = Field(default_factory=list)
@@ -572,6 +573,8 @@ def build_batch_prompt(
         "Classify each prompt below using the approved taxonomy.",
         "",
         "Output requirements:",
+        "- batch_index must be the numeric INDEX for that prompt.",
+        "- Do not return prompt_id values.",
         f"- primary_category must be one approved taxonomy category or {PRIMARY_FALLBACK_CATEGORY}.",
         "- subtechnique must be null unless an approved subtechnique under the chosen primary category clearly fits.",
         "- supporting_traits is a closed list of exact labels, not an open tagging field.",
@@ -597,8 +600,8 @@ def build_batch_prompt(
         "",
         "Prompts:",
     ]
-    for record in records:
-        lines.append(f"PROMPT_ID: {record.prompt_id}")
+    for batch_index, record in enumerate(records):
+        lines.append(f"INDEX: {batch_index}")
         lines.append("TEXT:")
         lines.append(truncate_prompt(record.text))
         lines.append("")
@@ -634,15 +637,21 @@ def validate_classification_output(
     records: list[NormalizedRecord],
     taxonomy: dict[str, TaxonomyCategory],
 ) -> dict[str, ClassificationResult]:
-    expected_prompt_ids = {record.prompt_id for record in records}
+    expected_batch_indices = set(range(len(records)))
+    batch_index_to_record = {
+        batch_index: record for batch_index, record in enumerate(records)
+    }
     classification_lookup: dict[str, ClassificationResult] = {}
+    seen_batch_indices: set[int] = set()
 
     for item in parsed_output.classifications:
-        prompt_id = item.prompt_id.strip()
-        if prompt_id not in expected_prompt_ids:
-            raise ValueError(f"Unexpected prompt_id in model output: {prompt_id}")
-        if prompt_id in classification_lookup:
-            raise ValueError(f"Duplicate prompt_id in model output: {prompt_id}")
+        batch_index = item.batch_index
+        if batch_index not in expected_batch_indices:
+            raise ValueError(f"Unexpected batch_index in model output: {batch_index}")
+        if batch_index in seen_batch_indices:
+            raise ValueError(f"Duplicate batch_index in model output: {batch_index}")
+        seen_batch_indices.add(batch_index)
+        prompt_id = batch_index_to_record[batch_index].prompt_id
 
         primary_category = item.primary_category.strip()
         primary_key = canonical_label(primary_category)
@@ -692,10 +701,10 @@ def validate_classification_output(
             rationale=rationale,
         )
 
-    missing_prompt_ids = expected_prompt_ids.difference(classification_lookup)
-    if missing_prompt_ids:
+    missing_batch_indices = expected_batch_indices.difference(seen_batch_indices)
+    if missing_batch_indices:
         raise ValueError(
-            f"Model output omitted prompt_ids: {sorted(missing_prompt_ids)[:5]}"
+            f"Model output omitted batch_indices: {sorted(missing_batch_indices)[:5]}"
         )
 
     return classification_lookup

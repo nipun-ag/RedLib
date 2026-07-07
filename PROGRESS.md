@@ -1,6 +1,48 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Replaced long prompt IDs in the classifier's LLM contract with local
+batch indices to eliminate identity-copy retries.
+
+Issue:
+- After tightening `supporting_traits`, the main remaining
+  `classify_corpus.py` retry bucket was prompt ID corruption.
+- Claude was returning duplicated, omitted, or slightly mutated long
+  prompt IDs such as `harmbench_59fbcd0fcee47bc6ad16` instead of the
+  expected `harmbench_59fbcd0cfee47bc6ad16`.
+- Those failures were expensive because a single bad ID invalidated the
+  full structured-output batch.
+
+Change:
+- Replaced the LLM-facing `prompt_id` field in the structured-output
+  schema with numeric `batch_index`.
+- Updated the batch prompt so Claude receives `INDEX: 0`, `INDEX: 1`,
+  and so on instead of long corpus prompt IDs.
+- Added explicit instructions telling Claude to return `batch_index`
+  only and never return `prompt_id`.
+- Updated validation to reject duplicate, unexpected, or omitted batch
+  indices, then map each validated index back to the real `prompt_id`
+  before building output records.
+
+Why this implementation was needed:
+- The final artifact schema did not need to change; only the internal
+  model contract was fragile.
+- Short numeric identities are much easier for the model to reproduce
+  exactly than long hash-like prompt IDs.
+- This keeps checkpointing, batching, retries, and
+  `classified.jsonl` compatibility intact while removing a major source
+  of avoidable retries.
+
+Verification:
+- Confirmed the classifier still writes output records keyed by the
+  original corpus `prompt_id` values.
+- Local `py_compile` and the requested 1,000-record Doppler smoke test
+  remain environment-dependent because this shell session does not
+  currently expose a working Python runtime or Doppler CLI.
+
+---
+
+## 2026-07-08
 Hardened corpus classification against invalid `supporting_traits`
 labels that were driving avoidable retries.
 
