@@ -18,7 +18,7 @@ dist/
 build/
 
 # Raw data — too large for git
-data/raw/
+data
 
 # Claude Code
 .claude/
