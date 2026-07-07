@@ -62,6 +62,9 @@ SUPPORTING_TRAIT_OPTIONS = [
     "Educational Framing",
     "Roleplay Support",
 ]
+SUPPORTING_TRAITS_CLOSED_VOCABULARY = "; ".join(
+    f'"{trait}"' for trait in SUPPORTING_TRAIT_OPTIONS
+)
 
 SYSTEM_PROMPT = """You classify jailbreak prompts against an approved operational taxonomy.
 
@@ -74,6 +77,12 @@ Hard rules:
 - Primary category means the mechanism that most directly contributes to bypassing model safety behavior.
 - Supporting traits are secondary signals only. Do not promote a secondary trait into the primary category unless it is the main bypass mechanism.
 - If multiple mechanisms appear, choose the single dominant one and use supporting traits for the rest.
+- supporting_traits is a closed vocabulary. The only allowed values are provided in the user prompt.
+- Do not put taxonomy category names in supporting_traits.
+- Do not put subtechnique names in supporting_traits.
+- Do not paraphrase or partially rewrite supporting trait labels.
+- If no exact supporting trait applies, return an empty list.
+- Prefer fewer supporting traits over speculative or invalid supporting traits.
 - Rationale must be exactly one concise sentence.
 - Use objective language only.
 - Keep rationale at 120 characters or fewer.
@@ -546,7 +555,8 @@ def build_taxonomy_reference(taxonomy: dict[str, TaxonomyCategory]) -> str:
             )
     lines.append("")
     lines.append(
-        "Allowed supporting traits: " + "; ".join(SUPPORTING_TRAIT_OPTIONS)
+        "Allowed supporting traits (closed vocabulary, exact labels only): "
+        + "; ".join(SUPPORTING_TRAIT_OPTIONS)
     )
     lines.append(
         f"Allowed fallback primary category when no approved category fits: {PRIMARY_FALLBACK_CATEGORY}"
@@ -564,7 +574,13 @@ def build_batch_prompt(
         "Output requirements:",
         f"- primary_category must be one approved taxonomy category or {PRIMARY_FALLBACK_CATEGORY}.",
         "- subtechnique must be null unless an approved subtechnique under the chosen primary category clearly fits.",
-        "- supporting_traits must only contain items from the allowed supporting-traits list.",
+        "- supporting_traits is a closed list of exact labels, not an open tagging field.",
+        f"- supporting_traits may only contain these exact labels: {SUPPORTING_TRAITS_CLOSED_VOCABULARY}.",
+        "- supporting_traits must not contain taxonomy category names.",
+        "- supporting_traits must not contain subtechnique names.",
+        "- supporting_traits must not paraphrase, shorten, or combine allowed labels.",
+        "- If no exact supporting trait applies, supporting_traits must be an empty list.",
+        "- Prefer fewer supporting traits over invalid or speculative supporting traits.",
         "- confidence is a float from 0.0 to 1.0.",
         "- rationale must be one concise objective sentence.",
         "- rationale must be at most 120 characters.",
@@ -574,7 +590,8 @@ def build_batch_prompt(
         "Classification guidance:",
         "- Choose the mechanism that most directly drives the jailbreak attempt.",
         "- Do not select a secondary framing cue as the primary category if a stronger bypass mechanism is present.",
-        "- Use supporting traits for research pretext, professional context, creative writing framing, persona support, fictional framing support, and similar secondary signals.",
+        "- Use supporting traits only for exact matches to the allowed secondary-signal labels.",
+        "- If a secondary mechanism looks like another taxonomy category or subtechnique, keep it out of supporting_traits.",
         "",
         taxonomy_reference,
         "",

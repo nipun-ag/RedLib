@@ -1,5 +1,52 @@
 # RedLib — Progress Log
 
+## 2026-07-08
+Hardened corpus classification against invalid `supporting_traits`
+labels that were driving avoidable retries.
+
+Issue:
+- The active `classify_corpus.py` scale test showed unsupported
+  `supporting_traits` as the largest retry bucket.
+- Claude was correctly identifying secondary mechanisms in many cases,
+  but it often returned taxonomy category names or subtechnique names
+  such as `Dual-Response or Comparative Framing`,
+  `Dual-Response Format`, and `Obfuscation / Encoding` inside
+  `supporting_traits`.
+- Those values are intentionally invalid because `supporting_traits`
+  uses a much smaller closed vocabulary than the taxonomy itself.
+
+Change:
+- Tightened the classification `SYSTEM_PROMPT` so
+  `supporting_traits` is explicitly described as a closed vocabulary.
+- Added negative instructions forbidding taxonomy category names,
+  subtechnique names, and paraphrased labels inside
+  `supporting_traits`.
+- Updated the batch prompt to enumerate the exact allowed
+  `supporting_traits` labels inline and instruct the model to return an
+  empty list when no exact supporting trait applies.
+- Added a bias toward fewer supporting traits over speculative or
+  invalid ones.
+
+Why this implementation was needed:
+- The classifier architecture was already correct: primary category,
+  subtechnique, and supporting traits are separate fields with
+  different purposes.
+- The expensive failure mode came from the prompt not drawing a strong
+  enough boundary between taxonomy labels and the closed supporting
+  trait vocabulary.
+- Strengthening that boundary should reduce retries and recursive batch
+  splitting without changing the output schema, taxonomy, checkpointing,
+  or ingestion behavior.
+
+Verification:
+- Confirmed the classifier still uses structured outputs and the
+  existing Pydantic validation path.
+- Local `py_compile` and the requested 100-record smoke test remain
+  environment-dependent because this shell session does not currently
+  expose a working Python launcher.
+
+---
+
 ## 2026-07-01
 Constrained taxonomy discovery to produce a hierarchical jailbreak
 taxonomy instead of a loose flat category list.
@@ -1525,5 +1572,3 @@ Verification:
   modestly wider schema cap and no silent truncation path in Python.
 - Live 100-record smoke-test verification remains blocked in this shell
   because no usable Python launcher is available.
-
----
