@@ -2,10 +2,10 @@
 
 ## What This Is
 RedLib is a production-grade RAG tool for AI safety practitioners and
-red teamers searching a curated corpus of real jailbreak prompts. It
-uses a staged local corpus pipeline to produce a reproducible classified
-dataset, then indexes that finalized corpus in Qdrant Cloud for
-retrieval and synthesis.
+red teamers searching a curated corpus of real adversarial jailbreak
+prompts. It uses a staged local corpus pipeline to produce a
+reproducible classified dataset, then indexes that finalized corpus in
+Qdrant Cloud for retrieval and synthesis.
 
 ## Tech Stack
 - Frontend: Vanilla JS, HTML, CSS (Tailwind via CDN, no build step)
@@ -122,6 +122,9 @@ Each corpus-stage script has exactly one responsibility:
 ## Corpus Principles
 - Raw datasets remain untouched after snapshotting
 - The corpus should be reproducible on each build
+- The corpus is limited to adversarial prompts that manipulate,
+  override, or bypass LLM safety behavior
+- Pure harmful requests without a jailbreak mechanism are out of scope
 - Normalization must be deterministic
 - Taxonomy should be discovered from the corpus before it is applied
 - Human review sits between taxonomy discovery and corpus-wide classification
@@ -225,6 +228,9 @@ Phase 1 - In Development
 - `normalize_corpus.py` is implemented as a deterministic provenance-
   preserving cleanup stage over canonical JSONL that writes
   `data/corpus/normalized.jsonl`
+- Corpus scope is explicitly limited to adversarial jailbreak prompts;
+  pure harmful requests without a jailbreak mechanism are excluded from
+  future corpus rebuilds
 - `discover_taxonomy.py` is implemented as an LLM-assisted,
   source-aware, stratified iterative stage with schema-backed
   structured outputs, minimum-plus-proportional sample allocation, and

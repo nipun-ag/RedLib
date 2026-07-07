@@ -8,6 +8,10 @@ RedLib has two major systems:
 2. A query pipeline that indexes that finalized corpus in Qdrant Cloud
    and serves corpus-grounded retrieval and synthesis through FastAPI.
 
+RedLib's corpus scope is adversarial jailbreak prompts only: prompts
+that manipulate, override, or bypass LLM safety behavior. Pure harmful
+requests without a jailbreak mechanism are out of scope.
+
 Frontend assets live under `frontend/` as static HTML/CSS/JS.
 
 ---
@@ -17,6 +21,8 @@ Frontend assets live under `frontend/` as static HTML/CSS/JS.
 - Raw source data is preserved exactly as downloaded.
 - Corpus versions are reproducible and locally inspectable.
 - Every corpus stage has exactly one responsibility.
+- Corpus scope is restricted to adversarial jailbreak prompts rather
+  than direct harmful requests with no jailbreak mechanism.
 - Normalization is deterministic and separate from classification.
 - Taxonomy is discovered from the corpus first, then approved by humans
   before it is applied at scale.
@@ -178,6 +184,9 @@ Qdrant
 - Dataset-specific prompt-field mappings are corpus-design decisions:
   they decide which variant of a source record belongs inside RedLib's
   jailbreak corpus before normalization begins.
+- Corpus scope is mechanism-based: records belong when the selected
+  prompt field contains an adversarial jailbreak attempt rather than a
+  standalone harmful request with no safety-bypass mechanism.
 - `normalize_corpus.py` exists so ingestion receives a stable prompt
   format and corpus cleanup stays deterministic after that field has
   already been selected.
@@ -235,6 +244,8 @@ Qdrant
 - Free of source-specific encoding and formatting noise
 - Built from explicit source/file field mappings rather than heuristic
   or semantic filtering
+- Scoped to adversarial jailbreak prompts rather than pure harmful
+  requests with no jailbreak mechanism
 
 ### Field Mapping And Corpus Scope
 - `normalize_corpus.py` uses explicit per-source, per-file field
@@ -253,6 +264,9 @@ Qdrant
   prompt field. Its `vanilla` field is excluded by corpus scope because
   RedLib is a jailbreak-prompt corpus, not a corpus of original
   non-jailbreak prompts.
+- RedLib also excludes source datasets whose primary content is direct
+  harmful requests without an adversarial jailbreak mechanism, even if
+  those requests are useful for other evaluation settings.
 
 ### `proposed_taxonomy.json`
 - Iterative taxonomy proposal derived from the normalized corpus

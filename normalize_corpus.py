@@ -30,9 +30,6 @@ PROMPT_FIELD_MAPPINGS: dict[str, dict[str, str]] = {
         "HumanJailbreaks_val.jsonl": "Behavior",
         "HumanJailbreaks_test.jsonl": "Behavior",
     },
-    "advbench": {
-        "harmful_behaviors.csv": "goal",
-    },
     "jailbreakbench_behaviors": {
         "behaviors_harmful.jsonl": "Goal",
     },

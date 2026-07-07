@@ -159,19 +159,6 @@ SOURCE_REGISTRY: tuple[SourceSpec, ...] = (
             ),
         ),
     ),
-    GitHubRawSourceSpec(
-        source_name="advbench",
-        source_type="github_raw",
-        required=True,
-        repository="llm-attacks/llm-attacks",
-        snapshots=(
-            GitHubRawSnapshotSpec(
-                url="https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv",
-                output_name="harmful_behaviors.csv",
-                format_label="csv",
-            ),
-        ),
-    ),
     HuggingFaceSourceSpec(
         source_name="maliciousinstruct",
         source_type="huggingface",

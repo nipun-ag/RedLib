@@ -1443,3 +1443,44 @@ Verification:
   Anthropic credentials and network access at execution time.
 
 ---
+## 2026-07-07
+Removed AdvBench from the active corpus pipeline and clarified RedLib's
+corpus scope as adversarial jailbreak prompts only.
+
+Issue:
+- The live pipeline still fetched and normalized AdvBench even though
+  RedLib's current architecture and taxonomy work are centered on
+  adversarial prompts that manipulate or bypass LLM safety behavior.
+- That created a scope mismatch: pure harmful requests without a
+  jailbreak mechanism could enter the corpus even though they do not fit
+  the intended mechanism-focused taxonomy surface.
+
+Change:
+- Removed the AdvBench source from `fetch_corpus.py` so future raw
+  corpus snapshots no longer download or stage that dataset.
+- Deleted the now-dead AdvBench prompt-field mapping from
+  `normalize_corpus.py`.
+- Updated `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, and
+  `docs/CONTEXT.md` to state explicitly that RedLib is a corpus of
+  adversarial jailbreak prompts designed to manipulate, override, or
+  bypass LLM safety behavior.
+- Documented the exclusion explicitly: direct harmful requests without a
+  jailbreak mechanism are out of scope for future corpus rebuilds.
+
+Why this implementation was needed:
+- RedLib's taxonomy is intended to describe jailbreak mechanisms, not to
+  absorb generic harmful-intent requests as a parallel class of prompt.
+- Removing AdvBench from acquisition is the cleanest way to keep future
+  corpus rebuilds aligned with the documented scope without introducing
+  extra semantic filtering logic into later stages.
+
+Verification:
+- Confirmed AdvBench was removed from the live fetch registry and from
+  normalization field mappings.
+- Verified current-facing documentation now describes the corpus as
+  adversarial jailbreak prompts only.
+- Existing local corpus artifacts were left untouched as intended; the
+  next full rebuild will naturally regenerate downstream artifacts
+  without AdvBench.
+
+---

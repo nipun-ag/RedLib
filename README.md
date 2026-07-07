@@ -1,20 +1,23 @@
 # RedLib
 
 RedLib is a retrieval-augmented research tool for AI safety
-practitioners and red teamers working with real jailbreak prompts. It
-combines a local corpus pipeline with Qdrant-backed retrieval
-so contributors can search, inspect, and synthesize patterns across a
-curated prompt corpus.
+practitioners and red teamers working with real adversarial jailbreak
+prompts. It combines a local corpus pipeline with Qdrant-backed
+retrieval so contributors can search, inspect, and synthesize patterns
+across a curated jailbreak corpus.
 
 ---
 
 ## Why It Exists
 
-Useful jailbreak prompts are scattered across public datasets and often
-arrive with inconsistent formatting, duplicate records, and weak
-taxonomy. RedLib exists to turn that messy source material into a
-reproducible research corpus that can be audited, classified, embedded,
-and queried reliably.
+Useful adversarial jailbreak prompts are scattered across public
+datasets and often arrive with inconsistent formatting, duplicate
+records, and weak taxonomy. RedLib exists to turn that messy source
+material into a reproducible research corpus that can be audited,
+classified, embedded, and queried reliably.
+
+Pure harmful requests that do not attempt to manipulate, override, or
+bypass LLM safety behavior are out of scope.
 
 ---
 
@@ -157,6 +160,9 @@ For contributor workflow and repo-specific guardrails, see
 ## Responsible Use
 
 RedLib contains real adversarial prompts collected from public research
-datasets. It is intended for AI safety research, red teaming, and
+datasets. The corpus is scoped to jailbreak prompts designed to
+manipulate, override, or bypass LLM safety behavior; direct harmful
+requests without a jailbreak mechanism are excluded from future corpus
+rebuilds. It is intended for AI safety research, red teaming, and
 educational use. The frontend includes a responsible-use gate before
 showing the searchable corpus.

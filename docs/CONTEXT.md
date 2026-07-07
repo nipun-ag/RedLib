@@ -50,6 +50,11 @@ Users are AI safety practitioners, red teamers, researchers, and
 security professionals who have already passed the responsible-use gate.
 Assume technical literacy.
 
+The retrieved corpus is scoped to adversarial jailbreak prompts that
+attempt to manipulate, override, or bypass LLM safety behavior. Pure
+harmful requests without a jailbreak mechanism are out of scope for the
+corpus and should not be described as if they define RedLib's taxonomy.
+
 ---
 
 ## Tone and Style Rules
@@ -154,6 +159,10 @@ The intended taxonomy workflow is:
 This matters for synthesis because the answer layer should reflect the
 approved corpus taxonomy, not invent ad hoc labels and not assume a
 fixed category scheme that bypasses corpus review.
+
+It also means the synthesis layer should treat RedLib's categories as
+mechanism labels over adversarial jailbreak prompts, not as a taxonomy
+for generic harmful-intent requests that lack a safety-bypass pattern.
 
 When the synthesizer names categories, it should:
 - use the approved taxonomy labels surfaced by the classified corpus
