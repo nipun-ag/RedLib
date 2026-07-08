@@ -524,9 +524,6 @@ all operate on that approved taxonomy output.
 | `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud authentication |
 | `OPENAI_API_KEY`    | `embedder.py`, `ingest.py`      | Embeddings                      |
 | `ANTHROPIC_API_KEY` | `synthesizer.py`                | Claude Haiku 4.5 synthesis      |
-| `DEEPSEEK_API_KEY`  | `classify_corpus.py`           | DeepSeek direct API key for deepseek provider classification |
-| `NVIDIA_API_KEY`    | `classify_corpus.py`           | NVIDIA NIM API key for nvidia provider classification (free tier, up to 40 RPM) |
-| `REDLIB_CLASSIFY_PROVIDER` | `classify_corpus.py`      | `anthropic` (default), `deepseek`, or `nvidia` |
 | `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API               |
 | `HUGGINGFACE_TOKEN` | `fetch_corpus.py`               | Dataset snapshot access         |
 | `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection               |

@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field, ValidationError
 
 if TYPE_CHECKING:
     from anthropic import Anthropic
-    from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +27,8 @@ CLASSIFICATION_FAILURE_LOG_PATH = CORPUS_ROOT / "classification_failures.jsonl"
 CLASSIFICATION_DEBUG_DIR = CORPUS_ROOT / "classification_debug"
 
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEFAULT_NVIDIA_MODEL = "z-ai/glm-5.2"
 BATCH_SIZE = int(os.environ.get("REDLIB_CLASSIFY_BATCH_SIZE", "24"))
 MAX_OUTPUT_TOKENS = int(os.environ.get("REDLIB_CLASSIFY_MAX_OUTPUT_TOKENS", "3500"))
-DEEPSEEK_MAX_OUTPUT_TOKENS = int(
-    os.environ.get("REDLIB_CLASSIFY_DEEPSEEK_MAX_OUTPUT_TOKENS", "6000")
-)
-NVIDIA_MAX_OUTPUT_TOKENS = int(
-    os.environ.get("REDLIB_CLASSIFY_NVIDIA_MAX_OUTPUT_TOKENS", "6000")
-)
 MAX_PROMPT_CHARS = int(os.environ.get("REDLIB_CLASSIFY_MAX_PROMPT_CHARS", "1600"))
 MAX_BATCH_INPUT_TOKENS = int(
     os.environ.get("REDLIB_CLASSIFY_MAX_INPUT_TOKENS", "32000")
@@ -155,7 +146,6 @@ class RunConfig:
     min_per_source: int = 40
     max_source_share: float = 0.4
     regenerate_sample: bool = False
-    provider: str = "anthropic"
 
     @property
     def is_experiment(self) -> bool:
@@ -209,23 +199,7 @@ def estimate_cost_usd(input_tokens: int, output_tokens: int) -> float | None:
     )
 
 
-def get_provider_from_env() -> str:
-    return os.environ.get("REDLIB_CLASSIFY_PROVIDER", "anthropic").strip().lower()
-
-
-def get_provider_model_name(provider: str) -> str:
-    configured_model = os.environ.get("REDLIB_CLASSIFY_MODEL")
-    if configured_model:
-        return configured_model
-    if provider == "deepseek":
-        return DEFAULT_DEEPSEEK_MODEL
-    if provider == "nvidia":
-        return DEFAULT_NVIDIA_MODEL
-    return DEFAULT_ANTHROPIC_MODEL
-
-
-PROVIDER = get_provider_from_env()
-MODEL_NAME = get_provider_model_name(PROVIDER)
+MODEL_NAME = os.environ.get("REDLIB_CLASSIFY_MODEL", DEFAULT_ANTHROPIC_MODEL)
 
 
 def get_anthropic_client() -> Any:
@@ -245,63 +219,8 @@ def get_anthropic_client() -> Any:
     return Anthropic(api_key=api_key)
 
 
-def get_deepseek_client() -> Any:
-    # DEEPSEEK_API_KEY must be added to Doppler before use.
-    # Run: doppler secrets set DEEPSEEK_API_KEY=<your key>
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise SystemExit(
-            "DEEPSEEK_API_KEY environment variable not set. "
-            "Add it to Doppler before running classify_corpus.py with "
-            "REDLIB_CLASSIFY_PROVIDER=deepseek."
-        )
-    try:
-        from openai import OpenAI
-    except ImportError as error:
-        raise SystemExit(
-            "openai package is not installed. Install project dependencies before "
-            "running classify_corpus.py with the DeepSeek provider."
-        ) from error
-    return OpenAI(
-        base_url="https://api.deepseek.com/v1",
-        api_key=api_key,
-    )
-
-
-def get_nvidia_client() -> Any:
-    # NVIDIA_API_KEY must be set in Doppler before use.
-    # Free tier: up to 40 RPM. Model: z-ai/glm-5.2 by default.
-    api_key = os.environ.get("NVIDIA_API_KEY")
-    if not api_key:
-        raise SystemExit(
-            "NVIDIA_API_KEY environment variable not set. "
-            "Add it to Doppler before running classify_corpus.py with "
-            "REDLIB_CLASSIFY_PROVIDER=nvidia."
-        )
-    try:
-        from openai import OpenAI
-    except ImportError as error:
-        raise SystemExit(
-            "openai package is not installed. Install project dependencies before "
-            "running classify_corpus.py with the NVIDIA provider."
-        ) from error
-    return OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=api_key,
-    )
-
-
-def get_client(provider: str) -> Any:
-    if provider == "anthropic":
-        return get_anthropic_client()
-    if provider == "deepseek":
-        return get_deepseek_client()
-    if provider == "nvidia":
-        return get_nvidia_client()
-    raise SystemExit(
-        "Unsupported REDLIB_CLASSIFY_PROVIDER value. "
-        "Allowed values: anthropic, deepseek, nvidia."
-    )
+def get_client() -> Any:
+    return get_anthropic_client()
 
 
 def sanitize_path_fragment(value: str) -> str:
@@ -758,7 +677,7 @@ def prepare_run_state(
         remove_path_if_exists(artifacts.failure_log_path)
         checkpoint = None
 
-    model_name = get_provider_model_name(run_config.provider)
+    model_name = MODEL_NAME
     if checkpoint is None:
         if artifacts.staging_path.exists():
             raise SystemExit(
@@ -774,7 +693,6 @@ def prepare_run_state(
             "classified_staging_path": str(artifacts.staging_path),
             "normalized_sha256": normalized_sha256,
             "taxonomy_sha256": taxonomy_sha256,
-            "provider": run_config.provider,
             "model": model_name,
             "batch_size": run_config.batch_size,
             "max_prompt_chars": run_config.max_prompt_chars,
@@ -806,11 +724,6 @@ def prepare_run_state(
         raise SystemExit(
             "Existing classification checkpoint does not match the current "
             "proposed_taxonomy.json. Restart with --restart to begin a clean run."
-        )
-    if checkpoint.get("provider") != run_config.provider:
-        raise SystemExit(
-            "Existing classification checkpoint does not match the current "
-            "REDLIB_CLASSIFY_PROVIDER. Restart with --restart to begin a clean run."
         )
     if checkpoint.get("model") != model_name:
         raise SystemExit(
@@ -919,7 +832,7 @@ def estimate_request_input_tokens(
 ) -> int | None:
     try:
         token_estimate = client.messages.count_tokens(
-            model=get_provider_model_name("anthropic"),
+            model=MODEL_NAME,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
             output_format=BatchClassificationOutput,
@@ -928,14 +841,6 @@ def estimate_request_input_tokens(
         logger.warning("Could not estimate classification input tokens: %s", error)
         return None
     return token_estimate.input_tokens
-
-
-def estimate_request_input_tokens_deepseek(user_prompt: str) -> int:
-    estimated_tokens = len(user_prompt) // 4
-    logger.info(
-        "DeepSeek input token counts are estimated from characters (len(prompt)//4)."
-    )
-    return estimated_tokens
 
 
 def normalize_optional_string(value: str | None) -> str | None:
@@ -1036,7 +941,7 @@ def request_batch_classification_anthropic(
     if not records:
         raise ValueError("Cannot classify an empty batch.")
 
-    model_name = get_provider_model_name("anthropic")
+    model_name = MODEL_NAME
     user_prompt = build_batch_prompt(
         records,
         taxonomy_reference,
@@ -1278,549 +1183,6 @@ def request_batch_classification_anthropic(
     )
 
 
-def request_batch_classification_deepseek(
-    *,
-    client: Any,
-    records: list[NormalizedRecord],
-    taxonomy: dict[str, TaxonomyCategory],
-    taxonomy_reference: str,
-    checkpoint: dict[str, Any],
-    artifacts: RunArtifacts,
-    run_config: RunConfig,
-) -> BatchRequestResult:
-    if not records:
-        raise ValueError("Cannot classify an empty batch.")
-
-    model_name = get_provider_model_name("deepseek")
-    user_prompt = build_batch_prompt(
-        records,
-        taxonomy_reference,
-        max_prompt_chars=run_config.max_prompt_chars,
-    )
-    estimated_input_tokens = estimate_request_input_tokens_deepseek(user_prompt)
-
-    if estimated_input_tokens > MAX_BATCH_INPUT_TOKENS and len(records) > 1:
-        checkpoint["batches_split_for_token_pressure"] += 1
-        midpoint = len(records) // 2
-        logger.info(
-            "Splitting batch of %s prompts because estimated input tokens %s exceeded limit %s",
-            len(records),
-            estimated_input_tokens,
-            MAX_BATCH_INPUT_TOKENS,
-        )
-        left_result = request_batch_classification(
-            client=client,
-            records=records[:midpoint],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        right_result = request_batch_classification(
-            client=client,
-            records=records[midpoint:],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        combined = dict(left_result.classifications)
-        combined.update(right_result.classifications)
-        combined_attempt_count = left_result.attempt_count + right_result.attempt_count
-        return BatchRequestResult(
-            classifications=combined,
-            estimated_input_tokens=(
-                (left_result.estimated_input_tokens or 0)
-                + (right_result.estimated_input_tokens or 0)
-            ),
-            actual_input_tokens=(
-                left_result.actual_input_tokens + right_result.actual_input_tokens
-            ),
-            actual_output_tokens=(
-                left_result.actual_output_tokens + right_result.actual_output_tokens
-            ),
-            stop_reason=None,
-            attempt_count=combined_attempt_count,
-        )
-
-    prompt_ids = [record.prompt_id for record in records]
-    last_error: Exception | None = None
-
-    for attempt_number in range(1, MAX_RETRIES_PER_BATCH + 1):
-        logger.info(
-            "Classifying batch of %s prompts with model %s (attempt %s/%s, estimated input tokens=%s)",
-            len(records),
-            model_name,
-            attempt_number,
-            MAX_RETRIES_PER_BATCH,
-            estimated_input_tokens,
-        )
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT + "\nRespond with valid JSON only.",
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=DEEPSEEK_MAX_OUTPUT_TOKENS,
-            )
-            response_text = extract_text_content(response)
-            if not response_text:
-                raise ValueError("Structured classification output was incomplete or missing.")
-            parsed_payload = json.loads(response_text)
-            if isinstance(parsed_payload, list):
-                parsed_payload = {"classifications": parsed_payload}
-            parsed_output = BatchClassificationOutput.model_validate(parsed_payload)
-            stop_reason = None
-            choices = getattr(response, "choices", None)
-            if isinstance(choices, list) and choices:
-                stop_reason = getattr(choices[0], "finish_reason", None)
-            if stop_reason == "length":
-                raise ValueError(
-                    "Structured classification output was incomplete or missing."
-                )
-
-            classification_lookup = validate_classification_output(
-                parsed_output,
-                records,
-                taxonomy,
-            )
-            usage = extract_usage_metrics(response) or {}
-            return BatchRequestResult(
-                classifications=classification_lookup,
-                estimated_input_tokens=estimated_input_tokens,
-                actual_input_tokens=safe_int(usage.get("prompt_tokens"), 0),
-                actual_output_tokens=safe_int(usage.get("completion_tokens"), 0),
-                stop_reason=stop_reason,
-                attempt_count=attempt_number,
-            )
-        except (ValidationError, ValueError, json.JSONDecodeError) as error:
-            last_error = error
-            checkpoint["batch_retry_attempts"] += 1
-            checkpoint["failure_events"] += 1
-            debug_path = write_debug_payload(
-                artifacts=artifacts,
-                batch_prompt_ids=prompt_ids,
-                response_stage="structured_output_validation_failure",
-                error_message=str(error),
-                response=locals().get("response"),
-                estimated_input_tokens=estimated_input_tokens,
-                model_name=model_name,
-                extra_context={
-                    "attempt_number": attempt_number,
-                    "batch_size": len(records),
-                    "max_output_tokens": DEEPSEEK_MAX_OUTPUT_TOKENS,
-                    "provider": "deepseek",
-                },
-            )
-            log_failure_event(
-                artifacts,
-                {
-                    "timestamp": now_utc_iso(),
-                    "prompt_ids": prompt_ids,
-                    "batch_size": len(records),
-                    "attempt_number": attempt_number,
-                    "failure_type": type(error).__name__,
-                    "failure_stage": "structured_output_validation",
-                    "debug_path": str(debug_path),
-                    "message": str(error),
-                },
-            )
-        except Exception as error:
-            last_error = error
-            checkpoint["batch_retry_attempts"] += 1
-            checkpoint["failure_events"] += 1
-            debug_path = write_debug_payload(
-                artifacts=artifacts,
-                batch_prompt_ids=prompt_ids,
-                response_stage="structured_output_request_failure",
-                error_message=str(error),
-                response=locals().get("response"),
-                estimated_input_tokens=estimated_input_tokens,
-                model_name=model_name,
-                extra_context={
-                    "attempt_number": attempt_number,
-                    "batch_size": len(records),
-                    "max_output_tokens": DEEPSEEK_MAX_OUTPUT_TOKENS,
-                    "provider": "deepseek",
-                },
-            )
-            log_failure_event(
-                artifacts,
-                {
-                    "timestamp": now_utc_iso(),
-                    "prompt_ids": prompt_ids,
-                    "batch_size": len(records),
-                    "attempt_number": attempt_number,
-                    "failure_type": type(error).__name__,
-                    "failure_stage": "structured_output_request",
-                    "debug_path": str(debug_path),
-                    "message": str(error),
-                },
-            )
-
-        if attempt_number < MAX_RETRIES_PER_BATCH:
-            sleep_seconds = RETRY_BASE_DELAY_SECONDS * attempt_number
-            logger.warning(
-                "Retrying batch after %ss due to %s: %s",
-                sleep_seconds,
-                type(last_error).__name__ if last_error else "error",
-                last_error,
-            )
-            time.sleep(sleep_seconds)
-
-    if len(records) > 1:
-        midpoint = len(records) // 2
-        logger.warning(
-            "Falling back to recursive batch split after repeated failures for %s prompts",
-            len(records),
-        )
-        left_result = request_batch_classification(
-            client=client,
-            records=records[:midpoint],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        right_result = request_batch_classification(
-            client=client,
-            records=records[midpoint:],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        combined = dict(left_result.classifications)
-        combined.update(right_result.classifications)
-        return BatchRequestResult(
-            classifications=combined,
-            estimated_input_tokens=(
-                (left_result.estimated_input_tokens or 0)
-                + (right_result.estimated_input_tokens or 0)
-            ),
-            actual_input_tokens=(
-                left_result.actual_input_tokens + right_result.actual_input_tokens
-            ),
-            actual_output_tokens=(
-                left_result.actual_output_tokens + right_result.actual_output_tokens
-            ),
-            stop_reason=None,
-            attempt_count=left_result.attempt_count + right_result.attempt_count,
-        )
-
-    record = records[0]
-    checkpoint["records_classified_with_fallback"] += 1
-    log_failure_event(
-        artifacts,
-        {
-            "timestamp": now_utc_iso(),
-            "prompt_ids": [record.prompt_id],
-            "batch_size": 1,
-            "attempt_number": MAX_RETRIES_PER_BATCH,
-            "failure_type": type(last_error).__name__ if last_error else "UnknownError",
-            "failure_stage": "fallback_applied",
-            "message": str(last_error) if last_error else "Unknown classification failure",
-        },
-    )
-    fallback_result = ClassificationResult(
-        primary_category=PRIMARY_FALLBACK_CATEGORY,
-        subtechnique=None,
-        supporting_traits=[],
-        confidence=0.0,
-        rationale=FALLBACK_RATIONALE,
-    )
-    return BatchRequestResult(
-        classifications={record.prompt_id: fallback_result},
-        estimated_input_tokens=estimated_input_tokens,
-        actual_input_tokens=0,
-        actual_output_tokens=0,
-        stop_reason="fallback_applied",
-        attempt_count=MAX_RETRIES_PER_BATCH,
-    )
-
-
-def request_batch_classification_nvidia(
-    *,
-    client: Any,
-    records: list[NormalizedRecord],
-    taxonomy: dict[str, TaxonomyCategory],
-    taxonomy_reference: str,
-    checkpoint: dict[str, Any],
-    artifacts: RunArtifacts,
-    run_config: RunConfig,
-) -> BatchRequestResult:
-    if not records:
-        raise ValueError("Cannot classify an empty batch.")
-
-    model_name = get_provider_model_name("nvidia")
-    user_prompt = build_batch_prompt(
-        records,
-        taxonomy_reference,
-        max_prompt_chars=run_config.max_prompt_chars,
-    )
-    estimated_input_tokens = len(user_prompt) // 4
-    logger.info(
-        "NVIDIA input token counts are estimated from characters (len(prompt)//4)."
-    )
-
-    if estimated_input_tokens > MAX_BATCH_INPUT_TOKENS and len(records) > 1:
-        checkpoint["batches_split_for_token_pressure"] += 1
-        midpoint = len(records) // 2
-        logger.info(
-            "Splitting batch of %s prompts because estimated input tokens %s exceeded limit %s",
-            len(records),
-            estimated_input_tokens,
-            MAX_BATCH_INPUT_TOKENS,
-        )
-        left_result = request_batch_classification(
-            client=client,
-            records=records[:midpoint],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        right_result = request_batch_classification(
-            client=client,
-            records=records[midpoint:],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        combined = dict(left_result.classifications)
-        combined.update(right_result.classifications)
-        combined_attempt_count = left_result.attempt_count + right_result.attempt_count
-        return BatchRequestResult(
-            classifications=combined,
-            estimated_input_tokens=(
-                (left_result.estimated_input_tokens or 0)
-                + (right_result.estimated_input_tokens or 0)
-            ),
-            actual_input_tokens=(
-                left_result.actual_input_tokens + right_result.actual_input_tokens
-            ),
-            actual_output_tokens=(
-                left_result.actual_output_tokens + right_result.actual_output_tokens
-            ),
-            stop_reason=None,
-            attempt_count=combined_attempt_count,
-        )
-
-    prompt_ids = [record.prompt_id for record in records]
-    last_error: Exception | None = None
-
-    for attempt_number in range(1, MAX_RETRIES_PER_BATCH + 1):
-        logger.info(
-            "Classifying batch of %s prompts with model %s (attempt %s/%s, estimated input tokens=%s)",
-            len(records),
-            model_name,
-            attempt_number,
-            MAX_RETRIES_PER_BATCH,
-            estimated_input_tokens,
-        )
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT + "\nRespond with valid JSON only.",
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=NVIDIA_MAX_OUTPUT_TOKENS,
-            )
-            response_text = extract_text_content(response)
-            if not response_text:
-                raise ValueError("Structured classification output was incomplete or missing.")
-            parsed_payload = json.loads(response_text)
-            if isinstance(parsed_payload, list):
-                parsed_payload = {"classifications": parsed_payload}
-            parsed_output = BatchClassificationOutput.model_validate(parsed_payload)
-            stop_reason = None
-            choices = getattr(response, "choices", None)
-            if isinstance(choices, list) and choices:
-                stop_reason = getattr(choices[0], "finish_reason", None)
-            if stop_reason == "length":
-                raise ValueError(
-                    "Structured classification output was incomplete or missing."
-                )
-
-            classification_lookup = validate_classification_output(
-                parsed_output,
-                records,
-                taxonomy,
-            )
-            usage = extract_usage_metrics(response) or {}
-            return BatchRequestResult(
-                classifications=classification_lookup,
-                estimated_input_tokens=estimated_input_tokens,
-                actual_input_tokens=safe_int(usage.get("prompt_tokens"), 0),
-                actual_output_tokens=safe_int(usage.get("completion_tokens"), 0),
-                stop_reason=stop_reason,
-                attempt_count=attempt_number,
-            )
-        except (ValidationError, ValueError, json.JSONDecodeError) as error:
-            last_error = error
-            checkpoint["batch_retry_attempts"] += 1
-            checkpoint["failure_events"] += 1
-            debug_path = write_debug_payload(
-                artifacts=artifacts,
-                batch_prompt_ids=prompt_ids,
-                response_stage="structured_output_validation_failure",
-                error_message=str(error),
-                response=locals().get("response"),
-                estimated_input_tokens=estimated_input_tokens,
-                model_name=model_name,
-                extra_context={
-                    "attempt_number": attempt_number,
-                    "batch_size": len(records),
-                    "max_output_tokens": NVIDIA_MAX_OUTPUT_TOKENS,
-                    "provider": "nvidia",
-                },
-            )
-            log_failure_event(
-                artifacts,
-                {
-                    "timestamp": now_utc_iso(),
-                    "prompt_ids": prompt_ids,
-                    "batch_size": len(records),
-                    "attempt_number": attempt_number,
-                    "failure_type": type(error).__name__,
-                    "failure_stage": "structured_output_validation",
-                    "debug_path": str(debug_path),
-                    "message": str(error),
-                },
-            )
-        except Exception as error:
-            last_error = error
-            checkpoint["batch_retry_attempts"] += 1
-            checkpoint["failure_events"] += 1
-            debug_path = write_debug_payload(
-                artifacts=artifacts,
-                batch_prompt_ids=prompt_ids,
-                response_stage="structured_output_request_failure",
-                error_message=str(error),
-                response=locals().get("response"),
-                estimated_input_tokens=estimated_input_tokens,
-                model_name=model_name,
-                extra_context={
-                    "attempt_number": attempt_number,
-                    "batch_size": len(records),
-                    "max_output_tokens": NVIDIA_MAX_OUTPUT_TOKENS,
-                    "provider": "nvidia",
-                },
-            )
-            log_failure_event(
-                artifacts,
-                {
-                    "timestamp": now_utc_iso(),
-                    "prompt_ids": prompt_ids,
-                    "batch_size": len(records),
-                    "attempt_number": attempt_number,
-                    "failure_type": type(error).__name__,
-                    "failure_stage": "structured_output_request",
-                    "debug_path": str(debug_path),
-                    "message": str(error),
-                },
-            )
-
-        if attempt_number < MAX_RETRIES_PER_BATCH:
-            sleep_seconds = RETRY_BASE_DELAY_SECONDS * attempt_number
-            logger.warning(
-                "Retrying batch after %ss due to %s: %s",
-                sleep_seconds,
-                type(last_error).__name__ if last_error else "error",
-                last_error,
-            )
-            time.sleep(sleep_seconds)
-
-    if len(records) > 1:
-        midpoint = len(records) // 2
-        logger.warning(
-            "Falling back to recursive batch split after repeated failures for %s prompts",
-            len(records),
-        )
-        left_result = request_batch_classification(
-            client=client,
-            records=records[:midpoint],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        right_result = request_batch_classification(
-            client=client,
-            records=records[midpoint:],
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-        combined = dict(left_result.classifications)
-        combined.update(right_result.classifications)
-        return BatchRequestResult(
-            classifications=combined,
-            estimated_input_tokens=(
-                (left_result.estimated_input_tokens or 0)
-                + (right_result.estimated_input_tokens or 0)
-            ),
-            actual_input_tokens=(
-                left_result.actual_input_tokens + right_result.actual_input_tokens
-            ),
-            actual_output_tokens=(
-                left_result.actual_output_tokens + right_result.actual_output_tokens
-            ),
-            stop_reason=None,
-            attempt_count=left_result.attempt_count + right_result.attempt_count,
-        )
-
-    record = records[0]
-    checkpoint["records_classified_with_fallback"] += 1
-    log_failure_event(
-        artifacts,
-        {
-            "timestamp": now_utc_iso(),
-            "prompt_ids": [record.prompt_id],
-            "batch_size": 1,
-            "attempt_number": MAX_RETRIES_PER_BATCH,
-            "failure_type": type(last_error).__name__ if last_error else "UnknownError",
-            "failure_stage": "fallback_applied",
-            "message": str(last_error) if last_error else "Unknown classification failure",
-        },
-    )
-    fallback_result = ClassificationResult(
-        primary_category=PRIMARY_FALLBACK_CATEGORY,
-        subtechnique=None,
-        supporting_traits=[],
-        confidence=0.0,
-        rationale=FALLBACK_RATIONALE,
-    )
-    return BatchRequestResult(
-        classifications={record.prompt_id: fallback_result},
-        estimated_input_tokens=estimated_input_tokens,
-        actual_input_tokens=0,
-        actual_output_tokens=0,
-        stop_reason="fallback_applied",
-        attempt_count=MAX_RETRIES_PER_BATCH,
-    )
-
-
 def request_batch_classification(
     *,
     client: Any,
@@ -1831,26 +1193,6 @@ def request_batch_classification(
     artifacts: RunArtifacts,
     run_config: RunConfig,
 ) -> BatchRequestResult:
-    if run_config.provider == "deepseek":
-        return request_batch_classification_deepseek(
-            client=client,
-            records=records,
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
-    if run_config.provider == "nvidia":
-        return request_batch_classification_nvidia(
-            client=client,
-            records=records,
-            taxonomy=taxonomy,
-            taxonomy_reference=taxonomy_reference,
-            checkpoint=checkpoint,
-            artifacts=artifacts,
-            run_config=run_config,
-        )
     return request_batch_classification_anthropic(
         client=client,
         records=records,
@@ -2173,14 +1515,6 @@ def classify_corpus(
     restart: bool,
     run_config: RunConfig,
 ) -> dict[str, Any]:
-    provider = os.environ.get("REDLIB_CLASSIFY_PROVIDER", "anthropic").strip().lower()
-    if provider not in {"anthropic", "deepseek", "nvidia"}:
-        raise SystemExit(
-            "Unsupported REDLIB_CLASSIFY_PROVIDER value. "
-            "Allowed values: anthropic, deepseek, nvidia."
-        )
-    run_config = replace(run_config, provider=provider)
-
     if not NORMALIZED_PATH.exists():
         raise SystemExit(
             "Normalized corpus not found at data/corpus/normalized.jsonl. "
@@ -2221,7 +1555,7 @@ def classify_corpus(
         restart=restart,
     )
     taxonomy_reference = build_taxonomy_reference(taxonomy)
-    client = get_client(run_config.provider)
+    client = get_client()
 
     processed_records = safe_int(checkpoint.get("processed_records"), 0)
     if processed_records > effective_total_records:
@@ -2234,11 +1568,10 @@ def classify_corpus(
     batch_counter = safe_int(checkpoint.get("batches_completed"), 0)
 
     logger.info(
-        "Starting classification run over %s normalized records using %s taxonomy categories with provider=%s model=%s; resuming at record %s",
+        "Starting classification run over %s normalized records using %s taxonomy categories with model=%s; resuming at record %s",
         effective_total_records,
         len(taxonomy),
-        run_config.provider,
-        get_provider_model_name(run_config.provider),
+        MODEL_NAME,
         processed_records,
     )
 

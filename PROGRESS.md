@@ -1,6 +1,46 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Concluded the classifier provider experiments and returned
+`classify_corpus.py` to a single Anthropic Haiku 4.5 path.
+
+Issue:
+- We had accumulated multiple alternative-provider implementations and
+  experiment artifacts even though the experiment evidence had already
+  shown that the alternatives were not viable for the production-scale
+  corpus run.
+- The code still carried provider abstraction and transport-specific
+  workarounds for models that are no longer candidates.
+
+Experiment summary:
+- DeepSeek V4 Pro via OpenRouter: 72.8% primary agreement and 35
+  retries.
+- Qwen3-235B via OpenRouter: 61.2% primary agreement and 16 retries.
+- DeepSeek V4 Flash direct: 71.6% primary agreement and 14 retries.
+- GLM-5.2 via NVIDIA NIM: roughly 3 to 5 minutes per batch, making it
+  unusable at corpus scale.
+
+Decision:
+- Returned the classifier to Anthropic-only operation with Claude
+  Haiku 4.5 as the sole supported model path.
+- Removed all non-Anthropic provider code, transport-specific JSON
+  workarounds, and related environment-variable documentation.
+- Cleaned experiment artifacts back down to the fixed 500-record sample
+  plus the Haiku baseline outputs that future comparisons should use.
+
+Rationale:
+- Every alternative produced at least one unacceptable failure mode:
+  poor agreement, excessive retries, or unusable throughput.
+- Keeping only the proven Anthropic path reduces code complexity and
+  removes dead experiment branches before the full production run.
+
+Next step:
+- Run the full 169k-record corpus classification on Claude Haiku 4.5
+  using the default production settings.
+
+---
+
+## 2026-07-08
 Added NVIDIA NIM as a third classification provider so experiment runs
 can target GLM-5.2 without changing the taxonomy, checkpointing, or
 validation pipeline.
