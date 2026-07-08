@@ -28,11 +28,11 @@ CLASSIFICATION_FAILURE_LOG_PATH = CORPUS_ROOT / "classification_failures.jsonl"
 CLASSIFICATION_DEBUG_DIR = CORPUS_ROOT / "classification_debug"
 
 DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5"
-DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 BATCH_SIZE = int(os.environ.get("REDLIB_CLASSIFY_BATCH_SIZE", "24"))
 MAX_OUTPUT_TOKENS = int(os.environ.get("REDLIB_CLASSIFY_MAX_OUTPUT_TOKENS", "3500"))
-OPENROUTER_MAX_OUTPUT_TOKENS = int(
-    os.environ.get("REDLIB_CLASSIFY_OPENROUTER_MAX_OUTPUT_TOKENS", "6000")
+DEEPSEEK_MAX_OUTPUT_TOKENS = int(
+    os.environ.get("REDLIB_CLASSIFY_DEEPSEEK_MAX_OUTPUT_TOKENS", "6000")
 )
 MAX_PROMPT_CHARS = int(os.environ.get("REDLIB_CLASSIFY_MAX_PROMPT_CHARS", "1600"))
 MAX_BATCH_INPUT_TOKENS = int(
@@ -209,8 +209,8 @@ def get_provider_model_name(provider: str) -> str:
     configured_model = os.environ.get("REDLIB_CLASSIFY_MODEL")
     if configured_model:
         return configured_model
-    if provider == "openrouter":
-        return DEFAULT_OPENROUTER_MODEL
+    if provider == "deepseek":
+        return DEFAULT_DEEPSEEK_MODEL
     return DEFAULT_ANTHROPIC_MODEL
 
 
@@ -231,42 +231,37 @@ def get_anthropic_client() -> Any:
     return Anthropic(api_key=api_key)
 
 
-def get_openrouter_client() -> Any:
-    # OPENROUTER_API_KEY must be added to Doppler before use.
-    # Run: doppler secrets set OPENROUTER_API_KEY=<your key>
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+def get_deepseek_client() -> Any:
+    # DEEPSEEK_API_KEY must be added to Doppler before use.
+    # Run: doppler secrets set DEEPSEEK_API_KEY=<your key>
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise SystemExit(
-            "OPENROUTER_API_KEY environment variable not set. "
+            "DEEPSEEK_API_KEY environment variable not set. "
             "Add it to Doppler before running classify_corpus.py with "
-            "REDLIB_CLASSIFY_PROVIDER=openrouter."
+            "REDLIB_CLASSIFY_PROVIDER=deepseek."
         )
     try:
         from openai import OpenAI
     except ImportError as error:
         raise SystemExit(
             "openai package is not installed. Install project dependencies before "
-            "running classify_corpus.py with the OpenRouter provider."
+            "running classify_corpus.py with the DeepSeek provider."
         ) from error
     return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
+        base_url="https://api.deepseek.com/v1",
         api_key=api_key,
-        default_headers={
-            "HTTP-Referer": "https://github.com/nipun-ag/redlib",
-            "X-Title": "RedLib",
-            "X-Routing": "exacto",
-        },
     )
 
 
 def get_client(provider: str) -> Any:
     if provider == "anthropic":
         return get_anthropic_client()
-    if provider == "openrouter":
-        return get_openrouter_client()
+    if provider == "deepseek":
+        return get_deepseek_client()
     raise SystemExit(
         "Unsupported REDLIB_CLASSIFY_PROVIDER value. "
-        "Allowed values: anthropic, openrouter."
+        "Allowed values: anthropic, deepseek."
     )
 
 
@@ -896,10 +891,10 @@ def estimate_request_input_tokens(
     return token_estimate.input_tokens
 
 
-def estimate_request_input_tokens_openrouter(user_prompt: str) -> int:
+def estimate_request_input_tokens_deepseek(user_prompt: str) -> int:
     estimated_tokens = len(user_prompt) // 4
     logger.info(
-        "OpenRouter input token counts are estimated from characters (len(prompt)//4)."
+        "DeepSeek input token counts are estimated from characters (len(prompt)//4)."
     )
     return estimated_tokens
 
@@ -1244,7 +1239,7 @@ def request_batch_classification_anthropic(
     )
 
 
-def request_batch_classification_openrouter(
+def request_batch_classification_deepseek(
     *,
     client: Any,
     records: list[NormalizedRecord],
@@ -1257,13 +1252,13 @@ def request_batch_classification_openrouter(
     if not records:
         raise ValueError("Cannot classify an empty batch.")
 
-    model_name = get_provider_model_name("openrouter")
+    model_name = get_provider_model_name("deepseek")
     user_prompt = build_batch_prompt(
         records,
         taxonomy_reference,
         max_prompt_chars=run_config.max_prompt_chars,
     )
-    estimated_input_tokens = estimate_request_input_tokens_openrouter(user_prompt)
+    estimated_input_tokens = estimate_request_input_tokens_deepseek(user_prompt)
 
     if estimated_input_tokens > MAX_BATCH_INPUT_TOKENS and len(records) > 1:
         checkpoint["batches_split_for_token_pressure"] += 1
@@ -1338,7 +1333,7 @@ def request_batch_classification_openrouter(
                         "schema": BatchClassificationOutput.model_json_schema(),
                     },
                 },
-                max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+                max_tokens=DEEPSEEK_MAX_OUTPUT_TOKENS,
             )
             response_text = extract_text_content(response)
             if not response_text:
@@ -1362,8 +1357,8 @@ def request_batch_classification_openrouter(
             return BatchRequestResult(
                 classifications=classification_lookup,
                 estimated_input_tokens=estimated_input_tokens,
-                actual_input_tokens=safe_int(usage.get("input_tokens"), 0),
-                actual_output_tokens=safe_int(usage.get("output_tokens"), 0),
+                actual_input_tokens=safe_int(usage.get("prompt_tokens"), 0),
+                actual_output_tokens=safe_int(usage.get("completion_tokens"), 0),
                 stop_reason=stop_reason,
                 attempt_count=attempt_number,
             )
@@ -1382,8 +1377,8 @@ def request_batch_classification_openrouter(
                 extra_context={
                     "attempt_number": attempt_number,
                     "batch_size": len(records),
-                    "max_output_tokens": MAX_OUTPUT_TOKENS,
-                    "provider": "openrouter",
+                    "max_output_tokens": DEEPSEEK_MAX_OUTPUT_TOKENS,
+                    "provider": "deepseek",
                 },
             )
             log_failure_event(
@@ -1414,8 +1409,8 @@ def request_batch_classification_openrouter(
                 extra_context={
                     "attempt_number": attempt_number,
                     "batch_size": len(records),
-                    "max_output_tokens": MAX_OUTPUT_TOKENS,
-                    "provider": "openrouter",
+                    "max_output_tokens": DEEPSEEK_MAX_OUTPUT_TOKENS,
+                    "provider": "deepseek",
                 },
             )
             log_failure_event(
@@ -1525,8 +1520,8 @@ def request_batch_classification(
     artifacts: RunArtifacts,
     run_config: RunConfig,
 ) -> BatchRequestResult:
-    if run_config.provider == "openrouter":
-        return request_batch_classification_openrouter(
+    if run_config.provider == "deepseek":
+        return request_batch_classification_deepseek(
             client=client,
             records=records,
             taxonomy=taxonomy,
@@ -1858,10 +1853,10 @@ def classify_corpus(
     run_config: RunConfig,
 ) -> dict[str, Any]:
     provider = os.environ.get("REDLIB_CLASSIFY_PROVIDER", "anthropic").strip().lower()
-    if provider not in {"anthropic", "openrouter"}:
+    if provider not in {"anthropic", "deepseek"}:
         raise SystemExit(
             "Unsupported REDLIB_CLASSIFY_PROVIDER value. "
-            "Allowed values: anthropic, openrouter."
+            "Allowed values: anthropic, deepseek."
         )
     run_config = replace(run_config, provider=provider)
 

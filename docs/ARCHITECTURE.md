@@ -524,8 +524,8 @@ all operate on that approved taxonomy output.
 | `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud authentication |
 | `OPENAI_API_KEY`    | `embedder.py`, `ingest.py`      | Embeddings                      |
 | `ANTHROPIC_API_KEY` | `synthesizer.py`                | Claude Haiku 4.5 synthesis      |
-| `OPENROUTER_API_KEY` | `classify_corpus.py`           | OpenRouter authentication for DeepSeek experiment runs |
-| `REDLIB_CLASSIFY_PROVIDER` | `classify_corpus.py`      | Selects Anthropic or OpenRouter for taxonomy classification |
+| `DEEPSEEK_API_KEY`  | `classify_corpus.py`           | DeepSeek direct API key for deepseek provider classification |
+| `REDLIB_CLASSIFY_PROVIDER` | `classify_corpus.py`      | `anthropic` (default) or `deepseek` |
 | `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API               |
 | `HUGGINGFACE_TOKEN` | `fetch_corpus.py`               | Dataset snapshot access         |
 | `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection               |

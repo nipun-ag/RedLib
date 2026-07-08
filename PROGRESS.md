@@ -1,6 +1,66 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Removed the OpenRouter classification provider after repeated
+reliability failures and replaced it with DeepSeek's direct API.
+
+Issue:
+- OpenRouter experiments produced unacceptable reliability across two
+  candidate models.
+- The DeepSeek V4 Pro run triggered 35 retries and only 72.8% primary
+  category agreement against the Haiku baseline.
+- The Qwen3-235B run triggered 16 retries and only 61.2% primary
+  category agreement.
+- The recurring failure modes included missing constrained decoding on
+  the hosting side, truncated JSON from output-token pressure, and
+  omitted batch indices in structured output.
+
+Change:
+- Removed the OpenRouter provider path entirely from
+  `classify_corpus.py`, including its client factory, provider
+  dispatch, provider-specific max-output-token setting, and all
+  OpenRouter-specific comments and references.
+- Added a DeepSeek direct provider using `https://api.deepseek.com/v1`
+  through the same OpenAI-compatible protocol.
+- Set the provider-aware default model for the `deepseek` path to
+  `deepseek-v4-flash`, while leaving the Anthropic default as
+  `claude-haiku-4-5`.
+- Added `DEEPSEEK_MAX_OUTPUT_TOKENS`, defaulting to `6000`, so the
+  DeepSeek path has enough response headroom for batch-24 structured
+  output without reusing the tighter Anthropic default.
+- Kept the existing character-based input-token estimate for the
+  DeepSeek path and continued reading actual prompt/completion token
+  usage from the API response.
+- Updated `docs/ARCHITECTURE.md` so the environment variable table now
+  documents `DEEPSEEK_API_KEY` and the narrowed
+  `REDLIB_CLASSIFY_PROVIDER` choices.
+
+Operational note:
+- `DEEPSEEK_API_KEY` must be added to Doppler before running DeepSeek
+  classification experiments.
+
+Why this implementation was needed:
+- The provider abstraction remains useful, but OpenRouter's hosted
+  behavior was not reliable enough for a structured batch
+  classification workload where omitted indices or truncated JSON force
+  expensive retries and lower agreement.
+- DeepSeek's direct API controls the full structured-output path and is
+  a better fit for the experiment goal than continuing to tune around
+  provider-layer failures.
+
+Verification:
+- `python -m py_compile classify_corpus.py`
+- Confirmed no `openrouter` references remain in
+  `classify_corpus.py`.
+- Confirmed `get_deepseek_client()` constructs correctly when
+  `DEEPSEEK_API_KEY` is present and fails clearly when it is missing.
+- Confirmed the Anthropic client path remains intact and the source now
+  includes both `deepseek-v4-flash` and `claude-haiku-4-5` provider
+  defaults.
+
+---
+
+## 2026-07-08
 Added provider-aware classification transport support so
 `classify_corpus.py` can target either Anthropic or OpenRouter without
 changing the taxonomy, validation, checkpointing, or experiment
