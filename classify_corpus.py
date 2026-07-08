@@ -1325,14 +1325,7 @@ def request_batch_classification_deepseek(
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "BatchClassificationOutput",
-                        "strict": True,
-                        "schema": BatchClassificationOutput.model_json_schema(),
-                    },
-                },
+                response_format={"type": "json_object"},
                 max_tokens=DEEPSEEK_MAX_OUTPUT_TOKENS,
             )
             response_text = extract_text_content(response)
