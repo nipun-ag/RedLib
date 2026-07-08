@@ -1322,7 +1322,10 @@ def request_batch_classification_deepseek(
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT + "\nRespond with valid JSON only.",
+                    },
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
