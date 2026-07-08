@@ -31,6 +31,9 @@ DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5"
 DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro"
 BATCH_SIZE = int(os.environ.get("REDLIB_CLASSIFY_BATCH_SIZE", "24"))
 MAX_OUTPUT_TOKENS = int(os.environ.get("REDLIB_CLASSIFY_MAX_OUTPUT_TOKENS", "3500"))
+OPENROUTER_MAX_OUTPUT_TOKENS = int(
+    os.environ.get("REDLIB_CLASSIFY_OPENROUTER_MAX_OUTPUT_TOKENS", "6000")
+)
 MAX_PROMPT_CHARS = int(os.environ.get("REDLIB_CLASSIFY_MAX_PROMPT_CHARS", "1600"))
 MAX_BATCH_INPUT_TOKENS = int(
     os.environ.get("REDLIB_CLASSIFY_MAX_INPUT_TOKENS", "32000")
@@ -248,6 +251,11 @@ def get_openrouter_client() -> Any:
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
+        default_headers={
+            "HTTP-Referer": "https://github.com/nipun-ag/redlib",
+            "X-Title": "RedLib",
+            "X-Routing": "exacto",
+        },
     )
 
 
@@ -1330,7 +1338,7 @@ def request_batch_classification_openrouter(
                         "schema": BatchClassificationOutput.model_json_schema(),
                     },
                 },
-                max_tokens=MAX_OUTPUT_TOKENS,
+                max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
             )
             response_text = extract_text_content(response)
             if not response_text:
