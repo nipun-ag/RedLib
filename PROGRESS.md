@@ -1,6 +1,59 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Closed the classifier experiment loop and confirmed that Anthropic
+Haiku with the default production settings remains the correct full-
+corpus configuration.
+
+Issue:
+- We had accumulated several experiment variants and alternative-model
+  runs under `data/corpus/experiments/`, but the repo still needed a
+  concise evidence-based conclusion about which configuration should
+  power the full 169k-prompt classification run.
+- Several experiments looked promising on one axis such as token usage
+  or alternative-provider cost, but they needed to be judged against
+  baseline agreement, retry stability, and operational throughput
+  rather than intuition.
+
+Experiment results:
+- `chars800`: 88.0% primary-category agreement with 10.8% token
+  savings; not worth the quality loss.
+- `chars1200`: 91.0% primary-category agreement with 4.4% token
+  savings; not worth the quality loss.
+- `batch40`: 83.2% primary-category agreement and retries returned;
+  not worth it.
+- DeepSeek V4 Pro via OpenRouter: 72.8% primary-category agreement,
+  35 retries, about 12x slower than Haiku, and total cost exceeded
+  Haiku once retries were included.
+- Qwen3-235B via OpenRouter: 61.2% primary-category agreement,
+  invented primary categories, and delivered the worst overall quality
+  of any experiment path.
+- DeepSeek V4 Flash direct: 71.6% primary-category agreement,
+  14 retries, truncated JSON, and hallucinated subtechniques.
+
+Conclusion:
+- Anthropic Haiku at the default settings
+  (`1600` max prompt chars, `batch_size=24`) is the correct
+  configuration for the full 169k-corpus classification run.
+- The experiment framework validated that decision with concrete
+  agreement, retry, throughput, and cost evidence instead of relying on
+  assumption.
+
+Operational cleanup:
+- Pruned stale experiment artifacts so the fixed stratified sample and
+  the Haiku baseline remain as the canonical comparison set for any
+  future experiment work.
+
+Verification:
+- Confirmed the fixed sample file and baseline artifacts were preserved.
+- Confirmed all stale experiment outputs, debug directories, failures,
+  and non-baseline variant files were removed.
+- Confirmed the classifier still defaults to the Anthropic provider and
+  the `claude-haiku-4-5` model when provider/model env vars are unset.
+
+---
+
+## 2026-07-08
 Removed the OpenRouter classification provider after repeated
 reliability failures and replaced it with DeepSeek's direct API.
 

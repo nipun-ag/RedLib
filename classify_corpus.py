@@ -205,6 +205,10 @@ def estimate_cost_usd(input_tokens: int, output_tokens: int) -> float | None:
     )
 
 
+def get_provider_from_env() -> str:
+    return os.environ.get("REDLIB_CLASSIFY_PROVIDER", "anthropic").strip().lower()
+
+
 def get_provider_model_name(provider: str) -> str:
     configured_model = os.environ.get("REDLIB_CLASSIFY_MODEL")
     if configured_model:
@@ -212,6 +216,10 @@ def get_provider_model_name(provider: str) -> str:
     if provider == "deepseek":
         return DEFAULT_DEEPSEEK_MODEL
     return DEFAULT_ANTHROPIC_MODEL
+
+
+PROVIDER = get_provider_from_env()
+MODEL_NAME = get_provider_model_name(PROVIDER)
 
 
 def get_anthropic_client() -> Any:
@@ -1334,7 +1342,10 @@ def request_batch_classification_deepseek(
             response_text = extract_text_content(response)
             if not response_text:
                 raise ValueError("Structured classification output was incomplete or missing.")
-            parsed_output = BatchClassificationOutput.model_validate_json(response_text)
+            parsed_payload = json.loads(response_text)
+            if isinstance(parsed_payload, list):
+                parsed_payload = {"classifications": parsed_payload}
+            parsed_output = BatchClassificationOutput.model_validate(parsed_payload)
             stop_reason = None
             choices = getattr(response, "choices", None)
             if isinstance(choices, list) and choices:
