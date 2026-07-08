@@ -1220,6 +1220,7 @@ def build_experiment_summary(
         "runtime_seconds": round(runtime_seconds, 3),
         "average_prompts_per_second": prompts_per_second,
         "normalized_sha256": result.get("normalized_sha256"),
+        "estimated_cost_usd": token_usage.get("estimated_cost_usd"),
         "sample_size": result.get("sample_size"),
         "sample_prompt_ids_sha256": result.get("sample_prompt_ids_sha256"),
     }
@@ -1403,6 +1404,10 @@ def log_experiment_summary(summary: dict[str, Any]) -> None:
     logger.info(
         "average prompts/sec: %s",
         summary["average_prompts_per_second"],
+    )
+    logger.info(
+        "estimated cost USD: %s",
+        summary.get("estimated_cost_usd") or "not configured (set REDLIB_CLASSIFY_INPUT_COST_PER_MILLION_USD and REDLIB_CLASSIFY_OUTPUT_COST_PER_MILLION_USD)",
     )
 
 
