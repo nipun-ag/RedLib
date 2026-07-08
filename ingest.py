@@ -1,38 +1,36 @@
-import os
-import logging
 import hashlib
 import json
-import time
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
-import tiktoken
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams
-from qdrant_client.http.models import PayloadSchemaType
-from llama_index.vector_stores.qdrant import QdrantVectorStore
-from llama_index.core import StorageContext, VectorStoreIndex
-from llama_index.core.schema import MetadataMode, TextNode
-
-from data_loader import load_all_datasets
-from classifier import classify_batch, classify_with_timeout
-from embedder import get_embed_model
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_FILE = "ingest_checkpoint.json"
-MAX_EMBED_TOKENS = 8000
-EMBED_MODEL_NAME = "text-embedding-3-small"
-EMBED_ENCODING = tiktoken.encoding_for_model(EMBED_MODEL_NAME)
+CORPUS_ROOT = Path("data") / "corpus"
+CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
+INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
+COLLECTION_NAME = "redlib"
+UPSERT_BATCH_SIZE = 20
 
 
-def get_qdrant_client() -> QdrantClient:
-    """Connect to Qdrant Cloud and return a QdrantClient.
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    Raises:
-        ValueError: If QDRANT_URL or QDRANT_API_KEY not set
 
-    Returns:
-        QdrantClient
-    """
+def compute_file_sha256(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def get_qdrant_client() -> Any:
+    """Connect to Qdrant Cloud and return a QdrantClient."""
+    from qdrant_client import QdrantClient
+
     qdrant_url = os.environ.get("QDRANT_URL")
     qdrant_api_key = os.environ.get("QDRANT_API_KEY")
 
@@ -54,35 +52,22 @@ def get_qdrant_client() -> QdrantClient:
         )
         logger.info("Connected to Qdrant Cloud")
         return client
-    except Exception as e:
-        logger.error(f"Failed to connect to Qdrant: {type(e).__name__}: {e}")
+    except Exception as error:
+        logger.error(
+            "Failed to connect to Qdrant: %s: %s",
+            type(error).__name__,
+            error,
+        )
         raise
 
 
-def generate_id(source: str, text: str) -> str:
-    """Generate a unique stable ID for a prompt.
-
-    Args:
-        source: Dataset source name
-        text: Prompt text
-
-    Returns:
-        ID in format "{source}__{hash}" where hash is first 8 chars of MD5
-    """
-    text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
-    return f"{source}__{text_hash}"
-
-
-def count_tokens(text: str) -> int:
-    """Count tokens for the embedding model tokenizer."""
-    return len(EMBED_ENCODING.encode(text))
-
-
 def ensure_prompt_id_payload_index(
-    client: QdrantClient,
+    client: Any,
     collection_name: str,
 ) -> None:
     """Ensure prompt_id is indexed for direct Qdrant payload filtering."""
+    from qdrant_client.http.models import PayloadSchemaType
+
     collection_info = client.get_collection(collection_name)
     payload_schema = collection_info.payload_schema or {}
 
@@ -98,233 +83,296 @@ def ensure_prompt_id_payload_index(
     logger.info("Created Qdrant keyword payload index for prompt_id")
 
 
-def save_checkpoint(classified_records: list[dict], last_index: int) -> None:
-    """Save classification progress to checkpoint file.
+def ensure_collection_exists(client: Any, collection_name: str) -> None:
+    from qdrant_client.models import (
+        Distance,
+        SparseIndexParams,
+        SparseVectorParams,
+        VectorParams,
+    )
 
-    Args:
-        classified_records: List of classified prompt records
-        last_index: Index of the last classified prompt
-    """
-    checkpoint_data = {
-        "classified": classified_records,
-        "last_index": last_index,
-    }
+    if client.collection_exists(collection_name):
+        logger.info("Collection %s already exists", collection_name)
+        return
+
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config={
+            "dense": VectorParams(size=1536, distance=Distance.COSINE)
+        },
+        sparse_vectors_config={
+            "sparse": SparseVectorParams(index=SparseIndexParams())
+        },
+    )
+    logger.info("Created collection %s", collection_name)
+
+
+def count_classified_records() -> int:
+    ensure_classified_corpus_exists()
+
+    count = 0
+    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
+        for line in classified_file:
+            if line.strip():
+                count += 1
+
+    if count == 0:
+        raise SystemExit("Classified corpus is empty; cannot run ingestion.")
+    return count
+
+
+def ensure_classified_corpus_exists() -> None:
+    if CLASSIFIED_PATH.exists():
+        return
+    raise SystemExit(
+        "Classified corpus not found at data/corpus/classified.jsonl. "
+        "Run classify_corpus.py before ingest.py."
+    )
+
+
+def load_classified_record(payload: dict[str, Any], line_number: int) -> dict[str, Any]:
     try:
-        with open(CHECKPOINT_FILE, "w") as f:
-            json.dump(checkpoint_data, f)
-        logger.info(f"Saved checkpoint at index {last_index}")
-    except Exception as e:
-        logger.error(f"Failed to save checkpoint: {type(e).__name__}: {e}")
+        prompt_id = payload["prompt_id"]
+        source = payload["source"]
+        source_file = payload["source_file"]
+        source_row = payload["source_row"]
+        text = payload["text"]
+        raw_fields = payload["raw_fields"]
+        classification = payload["classification"]
+    except KeyError as error:
+        raise SystemExit(
+            f"Classified record at line {line_number} is missing key: {error}"
+        ) from error
+
+    if not all(
+        [
+            isinstance(prompt_id, str),
+            isinstance(source, str),
+            isinstance(source_file, str),
+            isinstance(source_row, int),
+            isinstance(text, str),
+            isinstance(raw_fields, dict),
+            isinstance(classification, dict),
+        ]
+    ):
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid field types."
+        )
+
+    primary_category = classification.get("primary_category")
+    subtechnique = classification.get("subtechnique")
+    supporting_traits = classification.get("supporting_traits")
+    confidence = classification.get("confidence")
+    rationale = classification.get("rationale")
+
+    if not isinstance(primary_category, str) or not primary_category.strip():
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid classification.primary_category."
+        )
+    if subtechnique is not None and not isinstance(subtechnique, str):
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid classification.subtechnique."
+        )
+    if not isinstance(supporting_traits, list):
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid classification.supporting_traits."
+        )
+    if not isinstance(confidence, (int, float)):
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid classification.confidence."
+        )
+    if not isinstance(rationale, str):
+        raise SystemExit(
+            f"Classified record at line {line_number} has invalid classification.rationale."
+        )
+
+    return payload
 
 
-def load_checkpoint() -> tuple[list[dict], int]:
-    """Load classification progress from checkpoint file if it exists.
+def iter_classified_records(*, start_index: int = 0) -> Any:
+    ensure_classified_corpus_exists()
 
-    Returns:
-        Tuple of (classified_records, last_index). Returns ([], 0) if no checkpoint.
-    """
-    if not os.path.exists(CHECKPOINT_FILE):
-        return [], 0
+    emitted = 0
+    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
+        for line_number, line in enumerate(classified_file, start=1):
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
 
-    try:
-        with open(CHECKPOINT_FILE, "r") as f:
-            checkpoint_data = json.load(f)
-        classified = checkpoint_data.get("classified", [])
-        last_index = checkpoint_data.get("last_index", 0)
-        logger.info(f"Loaded checkpoint: {len(classified)} records, last_index={last_index}")
-        return classified, last_index
-    except Exception as e:
-        logger.error(f"Failed to load checkpoint: {type(e).__name__}: {e}")
-        return [], 0
+            if emitted < start_index:
+                emitted += 1
+                continue
+
+            try:
+                payload = json.loads(stripped_line)
+            except json.JSONDecodeError as error:
+                raise SystemExit(
+                    f"Malformed classified JSONL at line {line_number}: {error.msg}"
+                ) from error
+
+            if not isinstance(payload, dict):
+                raise SystemExit(
+                    f"Classified record at line {line_number} is not a JSON object."
+                )
+
+            yield load_classified_record(payload, line_number)
+            emitted += 1
+
+
+def load_checkpoint() -> dict[str, Any] | None:
+    if not INGEST_CHECKPOINT_PATH.exists():
+        return None
+
+    with INGEST_CHECKPOINT_PATH.open("r", encoding="utf-8") as checkpoint_file:
+        payload = json.load(checkpoint_file)
+
+    if not isinstance(payload, dict):
+        raise SystemExit("Ingestion checkpoint is malformed.")
+    return payload
+
+
+def save_checkpoint(payload: dict[str, Any]) -> None:
+    INGEST_CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with INGEST_CHECKPOINT_PATH.open(
+        "w", encoding="utf-8", newline="\n"
+    ) as checkpoint_file:
+        json.dump(payload, checkpoint_file, indent=2, ensure_ascii=False)
+        checkpoint_file.write("\n")
+
+
+def remove_checkpoint_if_exists() -> None:
+    if INGEST_CHECKPOINT_PATH.exists():
+        INGEST_CHECKPOINT_PATH.unlink()
+
+
+def prepare_run_state(
+    *,
+    total_records: int,
+    classified_sha256: str,
+) -> dict[str, Any]:
+    checkpoint = load_checkpoint()
+    if checkpoint is None:
+        return {
+            "run_started_at": now_utc_iso(),
+            "classified_path": str(CLASSIFIED_PATH),
+            "classified_sha256": classified_sha256,
+            "total_records": total_records,
+            "processed_records": 0,
+            "last_updated_at": now_utc_iso(),
+            "completed": False,
+        }
+
+    if checkpoint.get("classified_sha256") != classified_sha256:
+        raise SystemExit(
+            "Existing ingestion checkpoint does not match the current "
+            "classified.jsonl. Delete data/corpus/ingest_checkpoint.json "
+            "to start a fresh ingestion run."
+        )
+
+    checkpoint["total_records"] = total_records
+    checkpoint["completed"] = False
+    return checkpoint
+
+
+def build_node(record: dict[str, Any]) -> Any:
+    from llama_index.core.schema import TextNode
+
+    classification = record["classification"]
+    return TextNode(
+        text=record["text"],
+        id_=record["prompt_id"],
+        metadata={
+            "source": record["source"],
+            "technique": classification["primary_category"],
+            "prompt_id": record["prompt_id"],
+        },
+    )
 
 
 def run_ingestion() -> None:
-    """Run the complete ingestion pipeline."""
-    try:
-        # Step 1: Load all datasets
-        logger.info("Step 1: Loading datasets...")
-        all_records = load_all_datasets()
-        logger.info(f"Loaded {len(all_records)} records")
+    from embedder import get_embed_model
+    from llama_index.core import StorageContext, VectorStoreIndex
+    from llama_index.vector_stores.qdrant import QdrantVectorStore
 
-        # Step 2: Check for checkpoint and resume if available
-        logger.info("Step 2: Checking for checkpoint...")
-        classified_records, last_index = load_checkpoint()
+    ensure_classified_corpus_exists()
 
-        if last_index > 0:
-            logger.info(f"Resuming from checkpoint at index {last_index}/{len(all_records)}")
-            records = classified_records
-            start_idx = last_index
-        else:
-            records = []
-            start_idx = 0
+    total_records = count_classified_records()
+    classified_sha256 = compute_file_sha256(CLASSIFIED_PATH)
+    checkpoint = prepare_run_state(
+        total_records=total_records,
+        classified_sha256=classified_sha256,
+    )
 
-        # Step 3: Classify prompts with checkpoint saving
-        logger.info("Step 3: Classifying prompts...")
-        for idx in range(start_idx, len(all_records)):
-            prompt_dict = all_records[idx]
-            text = prompt_dict["text"]
-
-            technique = classify_with_timeout(text)
-            result = prompt_dict.copy()
-            result["technique"] = technique
-
-            records.append(result)
-
-            # Save checkpoint every 100 prompts
-            if (idx + 1) % 100 == 0:
-                save_checkpoint(records, idx + 1)
-                logger.info(f"Classified {idx + 1} / {len(all_records)} prompts")
-
-            # Delay to avoid rate limiting
-            time.sleep(0.5)
-
-        logger.info("Classification complete")
-
-        # Step 4: Get embedding model
-        logger.info("Step 4: Configuring embedding model...")
-        embed_model = get_embed_model()
-
-        # Step 5: Connect to Qdrant
-        logger.info("Step 5: Connecting to Qdrant...")
-        client = get_qdrant_client()
-
-        # Step 6: Create collection if it doesn't exist
-        logger.info("Step 6: Ensuring collection exists...")
-        collection_name = "redlib"
-
-        if not client.collection_exists(collection_name):
-            try:
-                client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config={
-                        "dense": VectorParams(size=1536, distance=Distance.COSINE)
-                    },
-                    sparse_vectors_config={
-                        "sparse": SparseVectorParams(index=SparseIndexParams())
-                    },
-                )
-                logger.info(f"Created collection: {collection_name}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to create collection: {type(e).__name__}: {e}"
-                )
-                raise
-        else:
-            logger.info(f"Collection {collection_name} already exists")
-
-        # Step 7: Ensure prompt_id payload index exists
-        logger.info("Step 7: Ensuring prompt_id payload index exists...")
-        ensure_prompt_id_payload_index(client, collection_name)
-
-        # Step 8: Build vector store and index
-        logger.info("Step 8: Building vector store...")
-        vector_store = QdrantVectorStore(
-            client=client,
-            collection_name=collection_name,
-            enable_hybrid=True,
-            dense_vector_name="dense",
-            sparse_vector_name="sparse",
+    processed_records = checkpoint.get("processed_records", 0)
+    if not isinstance(processed_records, int) or processed_records < 0:
+        raise SystemExit("Ingestion checkpoint has invalid processed_records.")
+    if processed_records > total_records:
+        raise SystemExit(
+            "Ingestion checkpoint processed_records exceeds the number of "
+            "classified records."
         )
-        storage_context = StorageContext.from_defaults(vector_store=vector_store)
-        index = VectorStoreIndex.from_documents([], storage_context=storage_context)
 
-        # Step 9: Build nodes and upsert
-        logger.info("Step 9: Upserting nodes to Qdrant...")
-        nodes = []
+    logger.info(
+        "Starting ingestion over %s classified records; resuming at record %s",
+        total_records,
+        processed_records,
+    )
 
-        for record in records:
-            text = record["text"]
-            source = record["source"]
-            technique = record["technique"]
+    embed_model = get_embed_model()
+    client = get_qdrant_client()
+    ensure_collection_exists(client, COLLECTION_NAME)
+    ensure_prompt_id_payload_index(client, COLLECTION_NAME)
 
-            # Generate ID
-            vector_id = generate_id(source, text)
-            prompt_id = vector_id.split("__")[1]
+    vector_store = QdrantVectorStore(
+        client=client,
+        collection_name=COLLECTION_NAME,
+        enable_hybrid=True,
+        dense_vector_name="dense",
+        sparse_vector_name="sparse",
+    )
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    index = VectorStoreIndex(
+        [],
+        storage_context=storage_context,
+        embed_model=embed_model,
+    )
 
-            # Build metadata
-            metadata = {
-                "source": source,
-                "technique": technique,
-                "prompt_id": prompt_id,
-            }
+    batch_nodes: list[TextNode] = []
+    for record in iter_classified_records(start_index=processed_records):
+        batch_nodes.append(build_node(record))
+        if len(batch_nodes) < UPSERT_BATCH_SIZE:
+            continue
 
-            # Create node
-            node = TextNode(
-                text=text,
-                id=vector_id,
-                metadata=metadata,
-            )
-            raw_token_count = count_tokens(text)
-            embed_text = node.get_content(metadata_mode=MetadataMode.EMBED)
-            embed_token_count = count_tokens(embed_text)
+        index.insert_nodes(batch_nodes)
+        processed_records += len(batch_nodes)
+        checkpoint["processed_records"] = processed_records
+        checkpoint["last_updated_at"] = now_utc_iso()
+        save_checkpoint(checkpoint)
+        logger.info("Ingested %s/%s classified records", processed_records, total_records)
+        batch_nodes = []
 
-            logger.info(
-                f"Preparing prompt_id={prompt_id} "
-                f"source={source} "
-                f"raw_chars={len(text)} "
-                f"raw_tokens={raw_token_count} "
-                f"embed_chars={len(embed_text)} "
-                f"embed_tokens={embed_token_count}"
-            )
+    if batch_nodes:
+        index.insert_nodes(batch_nodes)
+        processed_records += len(batch_nodes)
+        checkpoint["processed_records"] = processed_records
+        checkpoint["last_updated_at"] = now_utc_iso()
+        save_checkpoint(checkpoint)
+        logger.info("Ingested %s/%s classified records", processed_records, total_records)
 
-            if embed_text != text:
-                logger.info(
-                    f"Embedded content differs for prompt_id={prompt_id} "
-                    f"source={source} "
-                    f"extra_chars={len(embed_text) - len(text)} "
-                    f"extra_tokens={embed_token_count - raw_token_count}"
-                )
-            if embed_token_count > MAX_EMBED_TOKENS:
-                logger.warning(
-                    f"Skipping oversized prompt "
-                    f"prompt_id={prompt_id} "
-                    f"source={source} "
-                    f"chars={len(embed_text)} "
-                    f"tokens={embed_token_count}"
-                )
-                continue
-            nodes.append(node)
+    if processed_records != total_records:
+        raise SystemExit(
+            f"Ingestion completed {processed_records} records but expected {total_records}."
+        )
 
-            # Upsert when batch reaches 100
-            if len(nodes) >= 20:
-                try:
-                    logger.info(f"About to insert batch of {len(nodes)} nodes")
-                    index.insert_nodes(nodes)
-                    logger.info(f"Successfully inserted batch of {len(nodes)} nodes")
-                    nodes = []
-                except Exception as e:
-                    logger.error(
-                        f"Failed to upsert batch of {len(nodes)} nodes: "
-                        f"{type(e).__name__}: {e}"
-                    )
-                    raise
-
-        # Upsert remaining nodes
-        if nodes:
-            try:
-                logger.info(f"About to insert batch of {len(nodes)} nodes")
-                index.insert_nodes(nodes)
-                logger.info(f"Successfully inserted batch of {len(nodes)} nodes")
-            except Exception as e:
-                logger.error(
-                    f"Failed to upsert batch of {len(nodes)} nodes: "
-                    f"{type(e).__name__}: {e}"
-                )
-                raise
-
-        logger.info(f"Ingestion complete. Total records ingested: {len(records)}")
-
-        # Clean up checkpoint file after successful completion
-        if os.path.exists(CHECKPOINT_FILE):
-            try:
-                os.remove(CHECKPOINT_FILE)
-                logger.info("Removed checkpoint file after successful ingestion")
-            except Exception as e:
-                logger.warning(f"Failed to remove checkpoint file: {type(e).__name__}: {e}")
-
-    except Exception as e:
-        logger.error(f"Ingestion failed: {type(e).__name__}: {e}")
-        raise
+    checkpoint["completed"] = True
+    checkpoint["last_updated_at"] = now_utc_iso()
+    save_checkpoint(checkpoint)
+    remove_checkpoint_if_exists()
+    logger.info(
+        "Ingestion complete. Embedded %s classified records into %s.",
+        total_records,
+        COLLECTION_NAME,
+    )
 
 
 if __name__ == "__main__":

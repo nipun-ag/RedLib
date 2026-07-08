@@ -248,8 +248,10 @@ Phase 1 - In Development
   checkpointing, incremental staging, retry logging, controlled
   fallback to `Unclear / Needs Review`, and cached stratified
   experiment sampling via `--sample-size`
-- Ingestion is defined as the final embedding step that consumes only
-  classified corpus artifacts
+- `ingest.py` now directly consumes finalized `classified.jsonl`
+  artifacts for embedding into Qdrant with resume-safe checkpointing and
+  no longer depends on legacy inline dataset loading or legacy
+  pre-taxonomy classification helpers
 - Prompt text lives in the `TextNode` body; metadata stores only
   `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`

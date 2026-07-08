@@ -1,6 +1,69 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Removed legacy pre-pipeline ingestion helpers, rewrote `ingest.py` to
+consume finalized `classified.jsonl`, and closed two documentation
+gaps around shared sampling and operational sidecars.
+
+Issue:
+- The live documented architecture said
+  `classified.jsonl -> ingest.py -> Qdrant`,
+  but `ingest.py` still followed an obsolete path:
+  direct Hugging Face loading through `data_loader.py`,
+  inline legacy labeling through `classifier.py`,
+  and then embedding into Qdrant.
+- `classifier.py` contained a hardcoded fixed-label taxonomy that
+  predates RedLib's taxonomy-first pipeline.
+- `data_loader.py` bypassed the staged local corpus workflow entirely.
+- `CLAUDE.md` was a stale parallel agent-instruction file superseded by
+  `AGENTS.md`.
+- `README.md` did not yet mention `corpus_sampling.py`, and
+  `docs/ARCHITECTURE.md` did not list several operational artifacts
+  already produced by classification, taxonomy debugging, experiments,
+  and fetch runs.
+
+Change:
+- Deleted `classifier.py`, `data_loader.py`, and `CLAUDE.md`.
+- Rewrote `ingest.py` so it now reads one finalized classified record
+  per line from `data/corpus/classified.jsonl`, validates the record
+  shape, builds `TextNode` objects with prompt text in the node body and
+  only `source`, `technique`, and `prompt_id` in metadata, and embeds
+  those nodes into the `redlib` Qdrant collection using the existing
+  `embedder.py` configuration.
+- Kept the documented Qdrant schema unchanged, including the hybrid
+  dense/sparse collection layout and the keyword payload index on
+  `prompt_id`.
+- Added resume-safe ingestion checkpointing so failed embedding runs can
+  continue from the last inserted classified record instead of
+  re-embedding from scratch.
+- Updated `README.md` to document `corpus_sampling.py` in the
+  Repository Guide.
+- Updated `docs/ARCHITECTURE.md` to document the operational artifacts
+  under `data/corpus/` that were already part of the working pipeline
+  but not yet listed.
+
+Why this implementation was needed:
+- Ingestion is supposed to be the final embedding handoff, not a place
+  where RedLib reloads upstream datasets or applies a second,
+  conflicting classification system.
+- Removing the obsolete files eliminates architectural ambiguity and
+  reduces the risk of accidentally running a pre-taxonomy workflow.
+- Documenting the sidecar artifacts makes the repo easier to operate and
+  audit because checkpoint, debug, experiment, and fetch-metadata files
+  are now explicitly part of the described system.
+
+Verification:
+- Confirmed `classifier.py`, `data_loader.py`, and `CLAUDE.md` no
+  longer exist.
+- `python -m py_compile ingest.py`
+- `python -c "import ingest; print('ingest imports OK')"`
+- Confirmed `ingest.py` references `classified.jsonl` and no longer
+  references the deleted legacy modules.
+- Confirmed `README.md` now mentions `corpus_sampling.py`.
+
+---
+
+## 2026-07-08
 Renamed ambiguous taxonomy subtechniques after the baseline
 classification experiment exposed a repeated subtechnique hallucination
 pattern, and marked the taxonomy as human-approved.

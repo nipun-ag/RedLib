@@ -143,6 +143,7 @@ for API requests.
 - `convert_sources.py`: convert raw JSONL and CSV source files into canonical JSONL records with provenance
 - `audit_corpus.py`: analyze canonical corpus quality without modifying source data
 - `normalize_corpus.py`: deterministically normalize prompts from canonical source records into a stable corpus format
+- `corpus_sampling.py`: shared deterministic source-aware stratified sampling used by `discover_taxonomy.py` and `classify_corpus.py`
 - `discover_taxonomy.py`: derive candidate attack families from the normalized corpus
 - `classify_corpus.py`: apply the approved taxonomy across the corpus
 - `ingest.py`: embed the finalized classified corpus into Qdrant
