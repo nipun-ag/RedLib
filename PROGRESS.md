@@ -1,6 +1,55 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Added an isolated experiment mode to `classify_corpus.py` for
+measuring cost and quality tradeoffs without touching production
+artifacts.
+
+Issue:
+- The classifier is now stable, but classification cost is still high
+  enough that we need objective comparisons before changing production
+  settings.
+- The existing script only supports the production path, so trying
+  alternate `batch_size` or text-length settings would mix experiment
+  outputs with production staging, checkpoints, and artifacts.
+
+Change:
+- Added experiment-only CLI flags:
+  `--experiment-name`,
+  `--max-text-chars`,
+  and `--batch-size`.
+- Kept production defaults unchanged while requiring
+  `--experiment-name` for override-based experiment runs.
+- Isolated experiment runs under `data/corpus/experiments/` with
+  experiment-scoped classified output, staging, checkpoint, failure
+  log, debug directory, and summary files.
+- Added end-of-run experiment metrics covering prompts processed,
+  retries, failures, fallback records, token usage, averages, runtime,
+  and throughput.
+- Added agreement reporting against existing experiment outputs over the
+  same prompt set, including primary-category, subtechnique, and
+  supporting-traits agreement plus the first 20 disagreements for
+  manual review.
+
+Why this implementation was needed:
+- RedLib needs a reproducible framework for evaluating cheaper
+  configurations before committing to production classifier changes.
+- Isolating experiment state keeps the production classifier and resume
+  path safe while still enabling side-by-side measurement.
+- Agreement reporting gives a quick signal for whether cheaper runs are
+  preserving classification behavior closely enough to consider.
+
+Verification:
+- Confirmed production output assembly still writes the unchanged
+  `classified.jsonl` schema while experiment runs write to isolated
+  artifact paths.
+- Local `py_compile` and experiment execution remain environment-
+  dependent because this shell session does not currently expose a
+  working Python runtime or Doppler CLI.
+
+---
+
+## 2026-07-08
 Replaced long prompt IDs in the classifier's LLM contract with local
 batch indices to eliminate identity-copy retries.
 

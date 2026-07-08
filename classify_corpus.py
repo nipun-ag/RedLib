@@ -143,6 +143,27 @@ class BatchRequestResult:
     attempt_count: int
 
 
+@dataclass(frozen=True)
+class RunConfig:
+    batch_size: int
+    max_prompt_chars: int
+    experiment_name: str | None = None
+
+    @property
+    def is_experiment(self) -> bool:
+        return self.experiment_name is not None
+
+
+@dataclass(frozen=True)
+class RunArtifacts:
+    classified_path: Path
+    staging_path: Path
+    checkpoint_path: Path
+    failure_log_path: Path
+    debug_dir: Path
+    summary_path: Path | None = None
+
+
 def configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -190,6 +211,48 @@ def get_anthropic_client() -> Anthropic:
     return Anthropic(api_key=api_key)
 
 
+def sanitize_path_fragment(value: str) -> str:
+    sanitized = "".join(
+        character.lower()
+        if character.isalnum() or character in {"-", "_"}
+        else "-"
+        for character in value.strip()
+    )
+    sanitized = "-".join(part for part in sanitized.split("-") if part)
+    return sanitized or "experiment"
+
+
+def build_run_artifacts(
+    *,
+    limit: int | None,
+    run_config: RunConfig,
+) -> RunArtifacts:
+    if not run_config.is_experiment:
+        return RunArtifacts(
+            classified_path=CLASSIFIED_PATH,
+            staging_path=CLASSIFIED_STAGING_PATH,
+            checkpoint_path=CLASSIFICATION_CHECKPOINT_PATH,
+            failure_log_path=CLASSIFICATION_FAILURE_LOG_PATH,
+            debug_dir=CLASSIFICATION_DEBUG_DIR,
+        )
+
+    experiments_root = CORPUS_ROOT / "experiments"
+    limit_label = f"limit{limit}" if limit is not None else "limitall"
+    experiment_label = sanitize_path_fragment(run_config.experiment_name or "experiment")
+    stem = (
+        f"classified_{experiment_label}_{limit_label}"
+        f"_chars{run_config.max_prompt_chars}_batch{run_config.batch_size}"
+    )
+    return RunArtifacts(
+        classified_path=experiments_root / f"{stem}.jsonl",
+        staging_path=experiments_root / f"{stem}.staging.jsonl",
+        checkpoint_path=experiments_root / f"{stem}.checkpoint.json",
+        failure_log_path=experiments_root / f"{stem}.failures.jsonl",
+        debug_dir=experiments_root / f"{stem}.debug",
+        summary_path=experiments_root / f"{stem}.summary.json",
+    )
+
+
 def extract_text_content(response: Any) -> str:
     text_parts = []
     for block in getattr(response, "content", []):
@@ -201,6 +264,7 @@ def extract_text_content(response: Any) -> str:
 
 def write_debug_payload(
     *,
+    artifacts: RunArtifacts,
     batch_prompt_ids: list[str],
     response_stage: str,
     error_message: str,
@@ -208,13 +272,10 @@ def write_debug_payload(
     estimated_input_tokens: int | None = None,
     extra_context: dict[str, Any] | None = None,
 ) -> Path:
-    CLASSIFICATION_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    artifacts.debug_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     prompt_stub = batch_prompt_ids[0] if batch_prompt_ids else "batch"
-    debug_path = (
-        CLASSIFICATION_DEBUG_DIR
-        / f"{prompt_stub}_{response_stage}_{timestamp}.json"
-    )
+    debug_path = artifacts.debug_dir / f"{prompt_stub}_{response_stage}_{timestamp}.json"
     payload = {
         "generated_at": now_utc_iso(),
         "model": MODEL_NAME,
@@ -240,8 +301,9 @@ def write_debug_payload(
     return debug_path
 
 
-def log_failure_event(event: dict[str, Any]) -> None:
-    with CLASSIFICATION_FAILURE_LOG_PATH.open("a", encoding="utf-8", newline="\n") as log:
+def log_failure_event(artifacts: RunArtifacts, event: dict[str, Any]) -> None:
+    artifacts.failure_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifacts.failure_log_path.open("a", encoding="utf-8", newline="\n") as log:
         json.dump(event, log, ensure_ascii=False)
         log.write("\n")
 
@@ -422,29 +484,30 @@ def iter_normalized_records(
             emitted += 1
 
 
-def count_staging_records() -> int:
-    if not CLASSIFIED_STAGING_PATH.exists():
+def count_staging_records(artifacts: RunArtifacts) -> int:
+    if not artifacts.staging_path.exists():
         return 0
     count = 0
-    with CLASSIFIED_STAGING_PATH.open("r", encoding="utf-8") as staging_file:
+    with artifacts.staging_path.open("r", encoding="utf-8") as staging_file:
         for line in staging_file:
             if line.strip():
                 count += 1
     return count
 
 
-def load_checkpoint() -> dict[str, Any] | None:
-    if not CLASSIFICATION_CHECKPOINT_PATH.exists():
+def load_checkpoint(artifacts: RunArtifacts) -> dict[str, Any] | None:
+    if not artifacts.checkpoint_path.exists():
         return None
-    with CLASSIFICATION_CHECKPOINT_PATH.open("r", encoding="utf-8") as checkpoint_file:
+    with artifacts.checkpoint_path.open("r", encoding="utf-8") as checkpoint_file:
         payload = json.load(checkpoint_file)
     if not isinstance(payload, dict):
         raise SystemExit("Classification checkpoint is malformed.")
     return payload
 
 
-def save_checkpoint(payload: dict[str, Any]) -> None:
-    with CLASSIFICATION_CHECKPOINT_PATH.open("w", encoding="utf-8", newline="\n") as checkpoint:
+def save_checkpoint(artifacts: RunArtifacts, payload: dict[str, Any]) -> None:
+    artifacts.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifacts.checkpoint_path.open("w", encoding="utf-8", newline="\n") as checkpoint:
         json.dump(payload, checkpoint, indent=2, ensure_ascii=False)
         checkpoint.write("\n")
 
@@ -456,37 +519,39 @@ def remove_path_if_exists(file_path: Path) -> None:
 
 def prepare_run_state(
     *,
+    artifacts: RunArtifacts,
+    run_config: RunConfig,
     total_records: int,
     normalized_sha256: str,
     taxonomy_sha256: str,
     restart: bool,
 ) -> dict[str, Any]:
-    checkpoint = load_checkpoint()
+    checkpoint = load_checkpoint(artifacts)
 
     if restart:
-        remove_path_if_exists(CLASSIFIED_STAGING_PATH)
-        remove_path_if_exists(CLASSIFICATION_CHECKPOINT_PATH)
-        remove_path_if_exists(CLASSIFICATION_FAILURE_LOG_PATH)
+        remove_path_if_exists(artifacts.staging_path)
+        remove_path_if_exists(artifacts.checkpoint_path)
+        remove_path_if_exists(artifacts.failure_log_path)
         checkpoint = None
 
     if checkpoint is None:
-        if CLASSIFIED_STAGING_PATH.exists():
+        if artifacts.staging_path.exists():
             raise SystemExit(
                 "Found classified_staging.jsonl without a matching checkpoint. "
                 "Use --restart to discard stale staging state before classifying again."
             )
-        remove_path_if_exists(CLASSIFICATION_FAILURE_LOG_PATH)
+        remove_path_if_exists(artifacts.failure_log_path)
         return {
             "run_started_at": now_utc_iso(),
             "normalized_path": str(NORMALIZED_PATH),
             "proposed_taxonomy_path": str(PROPOSED_TAXONOMY_PATH),
-            "classified_path": str(CLASSIFIED_PATH),
-            "classified_staging_path": str(CLASSIFIED_STAGING_PATH),
+            "classified_path": str(artifacts.classified_path),
+            "classified_staging_path": str(artifacts.staging_path),
             "normalized_sha256": normalized_sha256,
             "taxonomy_sha256": taxonomy_sha256,
             "model": MODEL_NAME,
-            "batch_size": BATCH_SIZE,
-            "max_prompt_chars": MAX_PROMPT_CHARS,
+            "batch_size": run_config.batch_size,
+            "max_prompt_chars": run_config.max_prompt_chars,
             "max_batch_input_tokens": MAX_BATCH_INPUT_TOKENS,
             "max_output_tokens": MAX_OUTPUT_TOKENS,
             "total_records": total_records,
@@ -517,7 +582,7 @@ def prepare_run_state(
             "proposed_taxonomy.json. Restart with --restart to begin a clean run."
         )
 
-    staging_records = count_staging_records()
+    staging_records = count_staging_records(artifacts)
     checkpoint_records = safe_int(checkpoint.get("processed_records"), 0)
     if staging_records != checkpoint_records:
         safe_processed_records = min(staging_records, checkpoint_records)
@@ -529,14 +594,16 @@ def prepare_run_state(
         )
         checkpoint["processed_records"] = safe_processed_records
     checkpoint["total_records"] = total_records
+    checkpoint["batch_size"] = run_config.batch_size
+    checkpoint["max_prompt_chars"] = run_config.max_prompt_chars
     checkpoint["completed"] = False
     return checkpoint
 
 
-def truncate_prompt(text: str) -> str:
-    if len(text) <= MAX_PROMPT_CHARS:
+def truncate_prompt(text: str, max_prompt_chars: int) -> str:
+    if len(text) <= max_prompt_chars:
         return text
-    truncated = text[: MAX_PROMPT_CHARS - 3].rstrip()
+    truncated = text[: max_prompt_chars - 3].rstrip()
     return f"{truncated}..."
 
 
@@ -568,6 +635,8 @@ def build_taxonomy_reference(taxonomy: dict[str, TaxonomyCategory]) -> str:
 def build_batch_prompt(
     records: list[NormalizedRecord],
     taxonomy_reference: str,
+    *,
+    max_prompt_chars: int,
 ) -> str:
     lines = [
         "Classify each prompt below using the approved taxonomy.",
@@ -603,7 +672,7 @@ def build_batch_prompt(
     for batch_index, record in enumerate(records):
         lines.append(f"INDEX: {batch_index}")
         lines.append("TEXT:")
-        lines.append(truncate_prompt(record.text))
+        lines.append(truncate_prompt(record.text, max_prompt_chars))
         lines.append("")
     return "\n".join(lines)
 
@@ -717,11 +786,17 @@ def request_batch_classification(
     taxonomy: dict[str, TaxonomyCategory],
     taxonomy_reference: str,
     checkpoint: dict[str, Any],
+    artifacts: RunArtifacts,
+    run_config: RunConfig,
 ) -> BatchRequestResult:
     if not records:
         raise ValueError("Cannot classify an empty batch.")
 
-    user_prompt = build_batch_prompt(records, taxonomy_reference)
+    user_prompt = build_batch_prompt(
+        records,
+        taxonomy_reference,
+        max_prompt_chars=run_config.max_prompt_chars,
+    )
     estimated_input_tokens = estimate_request_input_tokens(client, user_prompt)
 
     if (
@@ -743,6 +818,8 @@ def request_batch_classification(
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         right_result = request_batch_classification(
             client=client,
@@ -750,6 +827,8 @@ def request_batch_classification(
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         combined = dict(left_result.classifications)
         combined.update(right_result.classifications)
@@ -814,6 +893,7 @@ def request_batch_classification(
             checkpoint["batch_retry_attempts"] += 1
             checkpoint["failure_events"] += 1
             debug_path = write_debug_payload(
+                artifacts=artifacts,
                 batch_prompt_ids=prompt_ids,
                 response_stage="structured_output_validation_failure",
                 error_message=str(error),
@@ -826,6 +906,7 @@ def request_batch_classification(
                 },
             )
             log_failure_event(
+                artifacts,
                 {
                     "timestamp": now_utc_iso(),
                     "prompt_ids": prompt_ids,
@@ -842,6 +923,7 @@ def request_batch_classification(
             checkpoint["batch_retry_attempts"] += 1
             checkpoint["failure_events"] += 1
             debug_path = write_debug_payload(
+                artifacts=artifacts,
                 batch_prompt_ids=prompt_ids,
                 response_stage="structured_output_request_failure",
                 error_message=str(error),
@@ -853,6 +935,7 @@ def request_batch_classification(
                 },
             )
             log_failure_event(
+                artifacts,
                 {
                     "timestamp": now_utc_iso(),
                     "prompt_ids": prompt_ids,
@@ -887,6 +970,8 @@ def request_batch_classification(
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         right_result = request_batch_classification(
             client=client,
@@ -894,6 +979,8 @@ def request_batch_classification(
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         combined = dict(left_result.classifications)
         combined.update(right_result.classifications)
@@ -916,6 +1003,7 @@ def request_batch_classification(
     record = records[0]
     checkpoint["records_classified_with_fallback"] += 1
     log_failure_event(
+        artifacts,
         {
             "timestamp": now_utc_iso(),
             "prompt_ids": [record.prompt_id],
@@ -964,8 +1052,9 @@ def build_output_record(
     }
 
 
-def append_classified_records(records: list[dict[str, Any]]) -> None:
-    with CLASSIFIED_STAGING_PATH.open("a", encoding="utf-8", newline="\n") as staging_file:
+def append_classified_records(artifacts: RunArtifacts, records: list[dict[str, Any]]) -> None:
+    artifacts.staging_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifacts.staging_path.open("a", encoding="utf-8", newline="\n") as staging_file:
         for record in records:
             json.dump(record, staging_file, ensure_ascii=False)
             staging_file.write("\n")
@@ -992,7 +1081,258 @@ def update_checkpoint_usage(
     )
 
 
-def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
+def build_experiment_summary(
+    *,
+    artifacts: RunArtifacts,
+    run_config: RunConfig,
+    result: dict[str, Any],
+    runtime_seconds: float,
+) -> dict[str, Any]:
+    processed_records = safe_int(result.get("processed_records"), 0)
+    token_usage = result.get("token_usage", {})
+    total_input_tokens = safe_int(token_usage.get("actual_input_tokens"), 0)
+    total_output_tokens = safe_int(token_usage.get("actual_output_tokens"), 0)
+    prompts_per_second = (
+        round(processed_records / runtime_seconds, 3) if runtime_seconds > 0 else 0.0
+    )
+    return {
+        "experiment_name": run_config.experiment_name,
+        "classified_path": str(artifacts.classified_path),
+        "processed_records": processed_records,
+        "total_records": safe_int(result.get("total_records"), 0),
+        "limit": result.get("limit"),
+        "batch_size": run_config.batch_size,
+        "max_text_chars": run_config.max_prompt_chars,
+        "retries": safe_int(result.get("batch_retry_attempts"), 0),
+        "failure_events": safe_int(result.get("failure_events"), 0),
+        "fallback_records": safe_int(result.get("records_classified_with_fallback"), 0),
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "average_input_tokens_per_prompt": round(
+            total_input_tokens / processed_records, 3
+        )
+        if processed_records
+        else 0.0,
+        "average_output_tokens_per_prompt": round(
+            total_output_tokens / processed_records, 3
+        )
+        if processed_records
+        else 0.0,
+        "runtime_seconds": round(runtime_seconds, 3),
+        "average_prompts_per_second": prompts_per_second,
+        "normalized_sha256": result.get("normalized_sha256"),
+    }
+
+
+def save_experiment_summary(artifacts: RunArtifacts, summary: dict[str, Any]) -> None:
+    if artifacts.summary_path is None:
+        return
+    artifacts.summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with artifacts.summary_path.open("w", encoding="utf-8", newline="\n") as summary_file:
+        json.dump(summary, summary_file, indent=2, ensure_ascii=False)
+        summary_file.write("\n")
+
+
+def load_classified_records_by_prompt_id(file_path: Path) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    with file_path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
+            payload = json.loads(stripped_line)
+            if not isinstance(payload, dict):
+                raise SystemExit(
+                    f"Classified artifact {file_path} has non-object JSON at line {line_number}."
+                )
+            prompt_id = payload.get("prompt_id")
+            if not isinstance(prompt_id, str) or not prompt_id:
+                raise SystemExit(
+                    f"Classified artifact {file_path} is missing prompt_id at line {line_number}."
+                )
+            records[prompt_id] = payload
+    return records
+
+
+def supporting_traits_match(left: list[str], right: list[str]) -> bool:
+    return sorted(left) == sorted(right)
+
+
+def compute_agreement_report(
+    current_records: dict[str, dict[str, Any]],
+    baseline_records: dict[str, dict[str, Any]],
+    *,
+    baseline_label: str,
+) -> dict[str, Any]:
+    common_prompt_ids = sorted(set(current_records).intersection(baseline_records))
+    if not common_prompt_ids:
+        raise SystemExit(
+            f"No overlapping prompt_ids found when comparing experiment results against {baseline_label}."
+        )
+
+    primary_matches = 0
+    subtechnique_matches = 0
+    supporting_traits_matches = 0
+    disagreements: list[dict[str, Any]] = []
+
+    for prompt_id in common_prompt_ids:
+        current_classification = current_records[prompt_id]["classification"]
+        baseline_classification = baseline_records[prompt_id]["classification"]
+
+        primary_equal = (
+            current_classification.get("primary_category")
+            == baseline_classification.get("primary_category")
+        )
+        subtechnique_equal = (
+            current_classification.get("subtechnique")
+            == baseline_classification.get("subtechnique")
+        )
+        current_traits = current_classification.get("supporting_traits", [])
+        baseline_traits = baseline_classification.get("supporting_traits", [])
+        supporting_traits_equal = (
+            isinstance(current_traits, list)
+            and isinstance(baseline_traits, list)
+            and supporting_traits_match(current_traits, baseline_traits)
+        )
+
+        if primary_equal:
+            primary_matches += 1
+        if subtechnique_equal:
+            subtechnique_matches += 1
+        if supporting_traits_equal:
+            supporting_traits_matches += 1
+
+        if (
+            not primary_equal
+            or not subtechnique_equal
+            or not supporting_traits_equal
+        ) and len(disagreements) < 20:
+            disagreements.append(
+                {
+                    "prompt_id": prompt_id,
+                    "current": {
+                        "primary_category": current_classification.get("primary_category"),
+                        "subtechnique": current_classification.get("subtechnique"),
+                        "supporting_traits": current_traits,
+                    },
+                    "baseline": {
+                        "primary_category": baseline_classification.get("primary_category"),
+                        "subtechnique": baseline_classification.get("subtechnique"),
+                        "supporting_traits": baseline_traits,
+                    },
+                }
+            )
+
+    total = len(common_prompt_ids)
+    return {
+        "baseline_label": baseline_label,
+        "compared_prompts": total,
+        "primary_category_agreement": round(primary_matches / total * 100, 1),
+        "subtechnique_agreement": round(subtechnique_matches / total * 100, 1),
+        "supporting_traits_agreement": round(supporting_traits_matches / total * 100, 1),
+        "disagreements": disagreements,
+    }
+
+
+def maybe_compute_experiment_agreement(
+    *,
+    artifacts: RunArtifacts,
+    summary: dict[str, Any],
+) -> dict[str, Any] | None:
+    if artifacts.summary_path is None or artifacts.summary_path.parent.exists() is False:
+        return None
+
+    current_summary_path = artifacts.summary_path
+    if not artifacts.classified_path.exists():
+        return None
+
+    candidate_summaries = sorted(artifacts.summary_path.parent.glob("*.summary.json"))
+    matching_candidates: list[tuple[Path, dict[str, Any]]] = []
+    for summary_path in candidate_summaries:
+        if summary_path == current_summary_path:
+            continue
+        with summary_path.open("r", encoding="utf-8") as handle:
+            candidate_summary = json.load(handle)
+        if (
+            candidate_summary.get("processed_records") == summary.get("processed_records")
+            and candidate_summary.get("normalized_sha256") == summary.get("normalized_sha256")
+        ):
+            matching_candidates.append((summary_path, candidate_summary))
+
+    if not matching_candidates:
+        return None
+
+    baseline_summary_path, baseline_summary = matching_candidates[0]
+    baseline_classified_path = Path(str(baseline_summary["classified_path"]))
+    if not baseline_classified_path.exists():
+        logger.warning(
+            "Skipping agreement report because baseline experiment artifact is missing: %s",
+            baseline_classified_path,
+        )
+        return None
+
+    current_records = load_classified_records_by_prompt_id(artifacts.classified_path)
+    baseline_records = load_classified_records_by_prompt_id(baseline_classified_path)
+    return compute_agreement_report(
+        current_records,
+        baseline_records,
+        baseline_label=baseline_summary_path.stem,
+    )
+
+
+def log_experiment_summary(summary: dict[str, Any]) -> None:
+    logger.info("Experiment Summary")
+    logger.info("prompts processed: %s", summary["processed_records"])
+    logger.info("retries: %s", summary["retries"])
+    logger.info("failure_events: %s", summary["failure_events"])
+    logger.info("fallback_records: %s", summary["fallback_records"])
+    logger.info("total input tokens: %s", summary["total_input_tokens"])
+    logger.info("total output tokens: %s", summary["total_output_tokens"])
+    logger.info(
+        "average input tokens per prompt: %s",
+        summary["average_input_tokens_per_prompt"],
+    )
+    logger.info(
+        "average output tokens per prompt: %s",
+        summary["average_output_tokens_per_prompt"],
+    )
+    logger.info("runtime: %.3fs", summary["runtime_seconds"])
+    logger.info(
+        "average prompts/sec: %s",
+        summary["average_prompts_per_second"],
+    )
+
+
+def log_agreement_report(agreement_report: dict[str, Any]) -> None:
+    logger.info("Agreement Report")
+    logger.info("baseline: %s", agreement_report["baseline_label"])
+    logger.info(
+        "Primary category: %.1f%%",
+        agreement_report["primary_category_agreement"],
+    )
+    logger.info(
+        "Subtechnique: %.1f%%",
+        agreement_report["subtechnique_agreement"],
+    )
+    logger.info(
+        "Supporting traits: %.1f%%",
+        agreement_report["supporting_traits_agreement"],
+    )
+    for disagreement in agreement_report["disagreements"]:
+        logger.info(
+            "Disagreement prompt_id=%s current=%s baseline=%s",
+            disagreement["prompt_id"],
+            disagreement["current"],
+            disagreement["baseline"],
+        )
+
+
+def classify_corpus(
+    *,
+    limit: int | None,
+    restart: bool,
+    run_config: RunConfig,
+) -> dict[str, Any]:
     if not NORMALIZED_PATH.exists():
         raise SystemExit(
             "Normalized corpus not found at data/corpus/normalized.jsonl. "
@@ -1004,8 +1344,11 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
     total_records = count_normalized_records()
     effective_total_records = min(total_records, limit) if limit is not None else total_records
 
-    CORPUS_ROOT.mkdir(parents=True, exist_ok=True)
+    artifacts = build_run_artifacts(limit=limit, run_config=run_config)
+    artifacts.classified_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = prepare_run_state(
+        artifacts=artifacts,
+        run_config=run_config,
         total_records=effective_total_records,
         normalized_sha256=normalized_sha256,
         taxonomy_sha256=taxonomy_sha256,
@@ -1036,7 +1379,7 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
         limit=None if limit is None else effective_total_records - processed_records,
     ):
         batch_buffer.append(record)
-        if len(batch_buffer) < BATCH_SIZE:
+        if len(batch_buffer) < run_config.batch_size:
             continue
 
         batch_counter += 1
@@ -1046,12 +1389,14 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         output_records = [
             build_output_record(record, batch_result.classifications[record.prompt_id])
             for record in batch_buffer
         ]
-        append_classified_records(output_records)
+        append_classified_records(artifacts, output_records)
 
         processed_records += len(batch_buffer)
         checkpoint["processed_records"] = processed_records
@@ -1060,7 +1405,7 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
         update_checkpoint_usage(checkpoint, batch_result)
 
         if batch_counter % CHECKPOINT_EVERY_BATCHES == 0:
-            save_checkpoint(checkpoint)
+            save_checkpoint(artifacts, checkpoint)
 
         logger.info(
             "Classified %s/%s records; batch size=%s; cumulative input tokens=%s; cumulative output tokens=%s; estimated cost=%s",
@@ -1081,19 +1426,21 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
             taxonomy=taxonomy,
             taxonomy_reference=taxonomy_reference,
             checkpoint=checkpoint,
+            artifacts=artifacts,
+            run_config=run_config,
         )
         output_records = [
             build_output_record(record, batch_result.classifications[record.prompt_id])
             for record in batch_buffer
         ]
-        append_classified_records(output_records)
+        append_classified_records(artifacts, output_records)
 
         processed_records += len(batch_buffer)
         checkpoint["processed_records"] = processed_records
         checkpoint["batches_completed"] = batch_counter
         checkpoint["last_updated_at"] = now_utc_iso()
         update_checkpoint_usage(checkpoint, batch_result)
-        save_checkpoint(checkpoint)
+        save_checkpoint(artifacts, checkpoint)
 
         logger.info(
             "Classified %s/%s records; batch size=%s; cumulative input tokens=%s; cumulative output tokens=%s; estimated cost=%s",
@@ -1110,22 +1457,24 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
             f"Classification completed {processed_records} records but expected {effective_total_records}."
         )
 
-    if limit is None:
-        CLASSIFIED_STAGING_PATH.replace(CLASSIFIED_PATH)
+    if run_config.is_experiment:
+        artifacts.staging_path.replace(artifacts.classified_path)
+    elif limit is None:
+        artifacts.staging_path.replace(artifacts.classified_path)
     else:
         logger.info(
             "Dry-run limit active; leaving partial results in staging file %s and not replacing %s",
-            CLASSIFIED_STAGING_PATH,
-            CLASSIFIED_PATH,
+            artifacts.staging_path,
+            artifacts.classified_path,
         )
 
     checkpoint["completed"] = True
     checkpoint["last_updated_at"] = now_utc_iso()
-    save_checkpoint(checkpoint)
+    save_checkpoint(artifacts, checkpoint)
 
     return {
-        "classified_path": str(CLASSIFIED_PATH),
-        "classified_staging_path": str(CLASSIFIED_STAGING_PATH),
+        "classified_path": str(artifacts.classified_path),
+        "classified_staging_path": str(artifacts.staging_path),
         "processed_records": processed_records,
         "total_records": effective_total_records,
         "token_usage": checkpoint["token_usage"],
@@ -1134,6 +1483,9 @@ def classify_corpus(*, limit: int | None, restart: bool) -> dict[str, Any]:
         "records_classified_with_fallback": checkpoint["records_classified_with_fallback"],
         "failure_events": checkpoint["failure_events"],
         "limit": limit,
+        "normalized_sha256": normalized_sha256,
+        "run_config": run_config,
+        "artifacts": artifacts,
     }
 
 
@@ -1155,13 +1507,58 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Discard existing classification staging/checkpoint files and restart the run.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Run in isolated experiment mode with experiment-scoped artifacts.",
+    )
+    parser.add_argument(
+        "--max-text-chars",
+        type=int,
+        default=MAX_PROMPT_CHARS,
+        help="Override prompt text truncation length for experiment runs.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZE,
+        help="Override batch size for experiment runs.",
+    )
+    args = parser.parse_args()
+    if args.max_text_chars <= 0:
+        raise SystemExit("--max-text-chars must be a positive integer.")
+    if args.batch_size <= 0:
+        raise SystemExit("--batch-size must be a positive integer.")
+    if (
+        args.experiment_name is None
+        and (
+            args.max_text_chars != MAX_PROMPT_CHARS
+            or args.batch_size != BATCH_SIZE
+        )
+    ):
+        raise SystemExit(
+            "--max-text-chars and --batch-size are experiment-only overrides. "
+            "Provide --experiment-name to use them."
+        )
+    return args
 
 
 def main() -> int:
     configure_logging()
     args = parse_args()
-    result = classify_corpus(limit=args.limit, restart=args.restart)
+    run_config = RunConfig(
+        batch_size=args.batch_size,
+        max_prompt_chars=args.max_text_chars,
+        experiment_name=args.experiment_name,
+    )
+    started_at = time.perf_counter()
+    result = classify_corpus(
+        limit=args.limit,
+        restart=args.restart,
+        run_config=run_config,
+    )
+    runtime_seconds = time.perf_counter() - started_at
     logger.info(
         "Classification finished for %s/%s records. input_tokens=%s output_tokens=%s retries=%s fallback_records=%s failure_events=%s",
         result["processed_records"],
@@ -1172,7 +1569,23 @@ def main() -> int:
         result["records_classified_with_fallback"],
         result["failure_events"],
     )
-    if result["limit"] is None:
+    if run_config.is_experiment:
+        artifacts: RunArtifacts = result["artifacts"]
+        summary = build_experiment_summary(
+            artifacts=artifacts,
+            run_config=run_config,
+            result=result,
+            runtime_seconds=runtime_seconds,
+        )
+        save_experiment_summary(artifacts, summary)
+        log_experiment_summary(summary)
+        agreement_report = maybe_compute_experiment_agreement(
+            artifacts=artifacts,
+            summary=summary,
+        )
+        if agreement_report is not None:
+            log_agreement_report(agreement_report)
+    elif result["limit"] is None:
         logger.info("Final classified corpus written to %s", CLASSIFIED_PATH)
     return 0
 
