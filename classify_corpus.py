@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
+from corpus_sampling import NormalizedRecord, select_stratified_sample
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ OUTPUT_COST_PER_MILLION_USD = float(
     os.environ.get("REDLIB_CLASSIFY_OUTPUT_COST_PER_MILLION_USD", "0")
 )
 RATIONALE_SCHEMA_MAX_CHARS = 300
+EXPERIMENT_SAMPLE_SEED = "redlib-classify-experiment-v1"
 
 PRIMARY_FALLBACK_CATEGORY = "Unclear / Needs Review"
 FALLBACK_RATIONALE = (
@@ -107,16 +109,6 @@ class BatchClassificationOutput(BaseModel):
 
 
 @dataclass(frozen=True)
-class NormalizedRecord:
-    prompt_id: str
-    source: str
-    source_file: str
-    source_row: int
-    text: str
-    raw_fields: dict[str, Any]
-
-
-@dataclass(frozen=True)
 class TaxonomyCategory:
     name: str
     description: str
@@ -148,6 +140,10 @@ class RunConfig:
     batch_size: int
     max_prompt_chars: int
     experiment_name: str | None = None
+    sample_size: int | None = None
+    min_per_source: int = 40
+    max_source_share: float = 0.4
+    regenerate_sample: bool = False
 
     @property
     def is_experiment(self) -> bool:
@@ -237,7 +233,10 @@ def build_run_artifacts(
         )
 
     experiments_root = CORPUS_ROOT / "experiments"
-    limit_label = f"limit{limit}" if limit is not None else "limitall"
+    if run_config.sample_size is not None:
+        limit_label = f"sample{run_config.sample_size}"
+    else:
+        limit_label = f"limit{limit}" if limit is not None else "limitall"
     experiment_label = sanitize_path_fragment(run_config.experiment_name or "experiment")
     stem = (
         f"classified_{experiment_label}_{limit_label}"
@@ -453,20 +452,15 @@ def iter_normalized_records(
     *,
     start_index: int = 0,
     limit: int | None = None,
+    prompt_id_filter: set[str] | None = None,
 ) -> Any:
     emitted = 0
-    seen_records = 0
+    eligible_records = 0
     with NORMALIZED_PATH.open("r", encoding="utf-8") as normalized_file:
         for line_number, line in enumerate(normalized_file, start=1):
             stripped_line = line.strip()
             if not stripped_line:
                 continue
-
-            seen_records += 1
-            if seen_records <= start_index:
-                continue
-            if limit is not None and emitted >= limit:
-                return
 
             try:
                 payload = json.loads(stripped_line)
@@ -480,8 +474,113 @@ def iter_normalized_records(
                     f"Normalized record at line {line_number} is not a JSON object."
                 )
 
-            yield load_normalized_record(payload, line_number)
+            record = load_normalized_record(payload, line_number)
+            if prompt_id_filter is not None and record.prompt_id not in prompt_id_filter:
+                continue
+
+            eligible_records += 1
+            if eligible_records <= start_index:
+                continue
+            if limit is not None and emitted >= limit:
+                return
+
+            yield record
             emitted += 1
+
+
+def sample_prompt_ids_digest(prompt_ids: list[str]) -> str:
+    return hashlib.sha256("\n".join(prompt_ids).encode("utf-8")).hexdigest()
+
+
+def sample_cache_path(sample_size: int) -> Path:
+    return CORPUS_ROOT / "experiments" / "samples" / f"sample_{sample_size}.json"
+
+
+def load_experiment_sample_payload(sample_path: Path) -> dict[str, Any]:
+    with sample_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Sample file is malformed: {sample_path}")
+    prompt_ids = payload.get("prompt_ids")
+    if not isinstance(prompt_ids, list) or any(
+        not isinstance(prompt_id, str) or not prompt_id for prompt_id in prompt_ids
+    ):
+        raise SystemExit(f"Sample file has invalid prompt_ids: {sample_path}")
+    return payload
+
+
+def generate_experiment_sample_payload(
+    *,
+    normalized_sha256: str,
+    run_config: RunConfig,
+) -> dict[str, Any]:
+    records = list(iter_normalized_records())
+    sample = select_stratified_sample(
+        records=records,
+        sample_size=run_config.sample_size or 0,
+        min_per_source=run_config.min_per_source,
+        max_source_share=run_config.max_source_share,
+        seed=EXPERIMENT_SAMPLE_SEED,
+    )
+    prompt_ids = [record.prompt_id for record in sample]
+    source_counts: dict[str, int] = {}
+    for record in sample:
+        source_counts[record.source] = source_counts.get(record.source, 0) + 1
+    return {
+        "generated_at": now_utc_iso(),
+        "normalized_sha256": normalized_sha256,
+        "sample_size": run_config.sample_size,
+        "min_per_source": run_config.min_per_source,
+        "max_source_share": run_config.max_source_share,
+        "seed": EXPERIMENT_SAMPLE_SEED,
+        "source_counts": dict(sorted(source_counts.items())),
+        "prompt_ids": prompt_ids,
+    }
+
+
+def load_or_create_experiment_sample(
+    *,
+    normalized_sha256: str,
+    run_config: RunConfig,
+) -> dict[str, Any]:
+    if run_config.sample_size is None:
+        raise SystemExit("Experiment sample requested without a sample size.")
+
+    sample_path = sample_cache_path(run_config.sample_size)
+    regenerate = run_config.regenerate_sample
+    sample_payload: dict[str, Any] | None = None
+
+    if sample_path.exists() and not regenerate:
+        candidate_payload = load_experiment_sample_payload(sample_path)
+        if candidate_payload.get("normalized_sha256") == normalized_sha256:
+            sample_payload = candidate_payload
+            logger.info(
+                "Reusing cached experiment sample from %s for %s prompts",
+                sample_path,
+                run_config.sample_size,
+            )
+        else:
+            logger.warning(
+                "Cached experiment sample %s does not match current normalized.jsonl SHA256; regenerating.",
+                sample_path,
+            )
+
+    if sample_payload is None:
+        sample_payload = generate_experiment_sample_payload(
+            normalized_sha256=normalized_sha256,
+            run_config=run_config,
+        )
+        sample_path.parent.mkdir(parents=True, exist_ok=True)
+        with sample_path.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(sample_payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        logger.info(
+            "Wrote experiment sample with %s prompts to %s",
+            len(sample_payload["prompt_ids"]),
+            sample_path,
+        )
+
+    return sample_payload
 
 
 def count_staging_records(artifacts: RunArtifacts) -> int:
@@ -1121,6 +1220,8 @@ def build_experiment_summary(
         "runtime_seconds": round(runtime_seconds, 3),
         "average_prompts_per_second": prompts_per_second,
         "normalized_sha256": result.get("normalized_sha256"),
+        "sample_size": result.get("sample_size"),
+        "sample_prompt_ids_sha256": result.get("sample_prompt_ids_sha256"),
     }
 
 
@@ -1256,6 +1357,8 @@ def maybe_compute_experiment_agreement(
         if (
             candidate_summary.get("processed_records") == summary.get("processed_records")
             and candidate_summary.get("normalized_sha256") == summary.get("normalized_sha256")
+            and candidate_summary.get("sample_prompt_ids_sha256")
+            == summary.get("sample_prompt_ids_sha256")
         ):
             matching_candidates.append((summary_path, candidate_summary))
 
@@ -1339,10 +1442,28 @@ def classify_corpus(
             "Run normalize_corpus.py before classify_corpus.py."
         )
 
+    if run_config.sample_size is not None and limit is not None:
+        raise SystemExit("--sample-size cannot be combined with --limit.")
+
     taxonomy, taxonomy_sha256 = load_taxonomy()
     normalized_sha256 = compute_file_sha256(NORMALIZED_PATH)
     total_records = count_normalized_records()
-    effective_total_records = min(total_records, limit) if limit is not None else total_records
+    sample_payload: dict[str, Any] | None = None
+    prompt_id_filter: set[str] | None = None
+    sample_prompt_ids_sha256: str | None = None
+    if run_config.sample_size is not None:
+        sample_payload = load_or_create_experiment_sample(
+            normalized_sha256=normalized_sha256,
+            run_config=run_config,
+        )
+        prompt_ids = sample_payload["prompt_ids"]
+        prompt_id_filter = set(prompt_ids)
+        sample_prompt_ids_sha256 = sample_prompt_ids_digest(prompt_ids)
+        effective_total_records = len(prompt_ids)
+    else:
+        effective_total_records = (
+            min(total_records, limit) if limit is not None else total_records
+        )
 
     artifacts = build_run_artifacts(limit=limit, run_config=run_config)
     artifacts.classified_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1377,6 +1498,7 @@ def classify_corpus(
     for record in iter_normalized_records(
         start_index=processed_records,
         limit=None if limit is None else effective_total_records - processed_records,
+        prompt_id_filter=prompt_id_filter,
     ):
         batch_buffer.append(record)
         if len(batch_buffer) < run_config.batch_size:
@@ -1484,6 +1606,8 @@ def classify_corpus(
         "failure_events": checkpoint["failure_events"],
         "limit": limit,
         "normalized_sha256": normalized_sha256,
+        "sample_size": run_config.sample_size,
+        "sample_prompt_ids_sha256": sample_prompt_ids_sha256,
         "run_config": run_config,
         "artifacts": artifacts,
     }
@@ -1525,21 +1649,57 @@ def parse_args() -> argparse.Namespace:
         default=BATCH_SIZE,
         help="Override batch size for experiment runs.",
     )
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Run an experiment against a deterministic stratified sample of N prompts.",
+    )
+    parser.add_argument(
+        "--min-per-source",
+        type=int,
+        default=40,
+        help="Minimum per-source sample floor for sampled experiment runs.",
+    )
+    parser.add_argument(
+        "--max-source-share",
+        type=float,
+        default=0.4,
+        help="Maximum share any one source may occupy in a sampled experiment run.",
+    )
+    parser.add_argument(
+        "--regenerate-sample",
+        action="store_true",
+        help="Regenerate the cached sampled experiment prompt set even if one already exists.",
+    )
     args = parser.parse_args()
     if args.max_text_chars <= 0:
         raise SystemExit("--max-text-chars must be a positive integer.")
     if args.batch_size <= 0:
         raise SystemExit("--batch-size must be a positive integer.")
+    if args.sample_size is not None and args.sample_size <= 0:
+        raise SystemExit("--sample-size must be a positive integer.")
+    if args.min_per_source <= 0:
+        raise SystemExit("--min-per-source must be a positive integer.")
+    if args.max_source_share <= 0 or args.max_source_share > 1:
+        raise SystemExit("--max-source-share must be greater than 0 and at most 1.")
+    if args.sample_size is not None and args.limit is not None:
+        raise SystemExit("--sample-size cannot be combined with --limit.")
     if (
         args.experiment_name is None
         and (
             args.max_text_chars != MAX_PROMPT_CHARS
             or args.batch_size != BATCH_SIZE
+            or args.sample_size is not None
+            or args.min_per_source != 40
+            or args.max_source_share != 0.4
+            or args.regenerate_sample
         )
     ):
         raise SystemExit(
-            "--max-text-chars and --batch-size are experiment-only overrides. "
-            "Provide --experiment-name to use them."
+            "--max-text-chars, --batch-size, --sample-size, "
+            "--min-per-source, --max-source-share, and --regenerate-sample "
+            "are experiment-only overrides. Provide --experiment-name to use them."
         )
     return args
 
@@ -1551,6 +1711,10 @@ def main() -> int:
         batch_size=args.batch_size,
         max_prompt_chars=args.max_text_chars,
         experiment_name=args.experiment_name,
+        sample_size=args.sample_size,
+        min_per_source=args.min_per_source,
+        max_source_share=args.max_source_share,
+        regenerate_sample=args.regenerate_sample,
     )
     started_at = time.perf_counter()
     result = classify_corpus(

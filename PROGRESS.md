@@ -1,6 +1,70 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Extracted shared deterministic corpus sampling into
+`corpus_sampling.py` and fixed experiment-mode classification sampling
+to stop overfitting to the first source in file order.
+
+Issue:
+- While reviewing the new `classify_corpus.py` experiment mode against
+  the live `normalized.jsonl` layout, it became clear that `--limit`
+  was still evaluating the first N records in file order rather than a
+  representative corpus slice.
+- The first 500 normalized records are all from HarmBench, so a
+  500-record experiment could report agreement and cost numbers that
+  looked corpus-wide while actually testing only one of the seven
+  sources.
+- `discover_taxonomy.py` already contained the right deterministic,
+  source-aware, stratified allocation logic, but it was trapped inline
+  inside the taxonomy stage and unavailable to experiment runs.
+
+Change:
+- Added a new shared module, `corpus_sampling.py`, containing
+  `NormalizedRecord` plus the stable-hash, prompt-length-bucket,
+  stratum-key, stable-order, source-allocation, and full
+  `select_stratified_sample(...)` helpers.
+- Refactored `discover_taxonomy.py` to import the shared sampling
+  helpers while keeping its existing constants, seed, unseen-record
+  filtering, round shape, and output behavior unchanged.
+- Updated `classify_corpus.py` experiment mode with a new
+  mutually-exclusive `--sample-size` path that builds or reuses a
+  cached deterministic sample under
+  `data/corpus/experiments/samples/sample_<size>.json`.
+- Added experiment-only sampling controls for
+  `--min-per-source`,
+  `--max-source-share`,
+  and `--regenerate-sample`,
+  and wired sampled runs to iterate only the selected `prompt_id`
+  values instead of the first N lines from `normalized.jsonl`.
+- Preserved production behavior: `--limit` still means a sequential
+  dry-run count for the non-sampled production path, while checkpointing,
+  staging, and isolated experiment artifacts remain intact.
+
+Why this implementation was needed:
+- RedLib needs experiment agreement numbers that reflect the whole
+  corpus mix, not just whichever dataset happens to appear first in the
+  normalized file.
+- Centralizing the sampler prevents taxonomy discovery and classifier
+  experiments from drifting into two different definitions of
+  "representative."
+- Caching sampled prompt IDs by normalized-corpus SHA keeps experiment
+  comparisons reproducible across reruns without silently reusing stale
+  prompt sets after corpus changes.
+
+Verification:
+- `python -m py_compile corpus_sampling.py`
+- `python -m py_compile discover_taxonomy.py`
+- `python -m py_compile classify_corpus.py`
+- Ran the 500-record sample distribution check twice and got the same
+  prompt-id digest both times:
+  `411212f16a5ab81eadb393bfd64dbbc818c448e68642732719fca4d51484db27`
+- Confirmed the resulting source mix spans all 7 sources with
+  `wildjailbreak` capped at 200/500 and every other source above its
+  configured floor.
+
+---
+
+## 2026-07-08
 Added an isolated experiment mode to `classify_corpus.py` for
 measuring cost and quality tradeoffs without touching production
 artifacts.

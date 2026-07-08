@@ -40,6 +40,7 @@ redlib/
 |- convert_sources.py      # Converts raw source formats into canonical JSONL records.
 |- audit_corpus.py         # Analyzes canonical corpus quality without modifying it.
 |- normalize_corpus.py     # Deterministically normalizes prompt records from canonical JSONL.
+|- corpus_sampling.py      # Shared deterministic sampling helpers for discovery and experiments.
 |- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
 |- classify_corpus.py      # Applies the approved taxonomy across the corpus.
 |- ingest.py               # Embeds finalized classified corpus into Qdrant.
@@ -211,6 +212,10 @@ Qdrant
 - Discovery is constrained to prefer recognizable red-team terminology,
   repeated evidence, and merges into broad families over proliferating
   one-off top-level labels.
+- `corpus_sampling.py` is a shared utility module used by taxonomy
+  discovery and sampled classification experiments so both paths draw
+  from the corpus with the same deterministic source-aware stratified
+  selection logic.
 - Human review exists between discovery and classification so the
   taxonomy reflects research judgment, not only automated clustering.
 - `classify_corpus.py` exists so taxonomy application is consistent,

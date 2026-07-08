@@ -1,7 +1,5 @@
-import hashlib
 import json
 import logging
-import math
 import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -10,6 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
+from corpus_sampling import (
+    NormalizedRecord,
+    allocate_source_samples,
+    build_stratum_key,
+    prompt_length_bucket,
+    stable_hash,
+    stable_record_order,
+)
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -151,16 +157,6 @@ class RoundAnalysisOutput(BaseModel):
 
 
 @dataclass(frozen=True)
-class NormalizedRecord:
-    prompt_id: str
-    source: str
-    source_file: str
-    source_row: int
-    text: str
-    raw_fields: dict[str, Any]
-
-
-@dataclass(frozen=True)
 class SampledRecord:
     sample_id: str
     prompt_id: str
@@ -199,10 +195,6 @@ def configure_logging() -> None:
     )
 
 
-def stable_hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
 def collapse_whitespace(text: str) -> str:
     return " ".join(text.split())
 
@@ -213,17 +205,6 @@ def build_excerpt(text: str, limit: int = MAX_EXCERPT_CHARS) -> str:
         return collapsed
     truncated = collapsed[: limit - 3].rstrip()
     return f"{truncated}..."
-
-
-def prompt_length_bucket(text: str) -> str:
-    text_length = len(text)
-    if text_length < 120:
-        return "short"
-    if text_length < 320:
-        return "medium"
-    if text_length < 700:
-        return "long"
-    return "very_long"
 
 
 def load_normalized_records() -> list[NormalizedRecord]:
@@ -290,138 +271,6 @@ def load_normalized_records() -> list[NormalizedRecord]:
     return records
 
 
-def build_stratum_key(record: NormalizedRecord) -> tuple[str, str, str]:
-    return (record.source, record.source_file, prompt_length_bucket(record.text))
-
-
-def stable_record_order(record: NormalizedRecord) -> str:
-    return stable_hash(
-        f"{SAMPLING_SEED}:{record.source}:{record.source_file}:{record.prompt_id}"
-    )
-
-
-def allocate_source_samples(
-    available_by_source: dict[str, int],
-) -> dict[str, int]:
-    source_names = sorted(available_by_source)
-    if not source_names or ROUND_SAMPLE_SIZE <= 0:
-        return {}
-
-    allocations = {source: 0 for source in source_names}
-    remaining_budget = ROUND_SAMPLE_SIZE
-
-    # Stage 1: guarantee a minimum contribution from every source when budget allows.
-    guaranteed_total = sum(
-        min(available_by_source[source], MIN_SAMPLES_PER_SOURCE_PER_ROUND)
-        for source in source_names
-    )
-    if guaranteed_total <= ROUND_SAMPLE_SIZE:
-        allocations = {
-            source: min(available_by_source[source], MIN_SAMPLES_PER_SOURCE_PER_ROUND)
-            for source in source_names
-        }
-        remaining_budget = ROUND_SAMPLE_SIZE - sum(allocations.values())
-    else:
-        while remaining_budget > 0:
-            progress_made = False
-            for source in source_names:
-                if allocations[source] >= available_by_source[source]:
-                    continue
-                allocations[source] += 1
-                remaining_budget -= 1
-                progress_made = True
-                if remaining_budget == 0:
-                    break
-            if not progress_made:
-                break
-        return allocations
-
-    effective_max_source_share = max(
-        MAX_SOURCE_SHARE_PER_ROUND,
-        1 / max(len(source_names), 1),
-    )
-    max_source_allocation = math.ceil(ROUND_SAMPLE_SIZE * effective_max_source_share)
-    per_source_caps = {
-        source: min(
-            available_by_source[source],
-            max(max_source_allocation, allocations[source]),
-        )
-        for source in source_names
-    }
-
-    # Stage 2: allocate the remaining budget proportionally to the remaining
-    # available records while enforcing an anti-dominance source cap.
-    while remaining_budget > 0:
-        eligible_sources = [
-            source
-            for source in source_names
-            if allocations[source] < per_source_caps[source]
-        ]
-        if not eligible_sources:
-            break
-
-        remaining_records_by_source = {
-            source: available_by_source[source] - allocations[source]
-            for source in eligible_sources
-        }
-        total_remaining_records = sum(remaining_records_by_source.values())
-        if total_remaining_records <= 0:
-            break
-
-        staged_additions = {source: 0 for source in eligible_sources}
-        assigned_this_round = 0
-        fractional_remainders: list[tuple[float, int, str]] = []
-
-        for source in eligible_sources:
-            capped_remaining = per_source_caps[source] - allocations[source]
-            ideal_allocation = (
-                remaining_budget
-                * remaining_records_by_source[source]
-                / total_remaining_records
-            )
-            staged_additions[source] = min(
-                capped_remaining,
-                math.floor(ideal_allocation),
-            )
-            assigned_this_round += staged_additions[source]
-            fractional_remainders.append(
-                (
-                    ideal_allocation - math.floor(ideal_allocation),
-                    remaining_records_by_source[source],
-                    source,
-                )
-            )
-
-        leftover_budget = remaining_budget - assigned_this_round
-        for _, _, source in sorted(
-            fractional_remainders,
-            key=lambda item: (-item[0], -item[1], item[2]),
-        ):
-            if leftover_budget == 0:
-                break
-            capped_remaining = per_source_caps[source] - (
-                allocations[source] + staged_additions[source]
-            )
-            if capped_remaining <= 0:
-                continue
-            staged_additions[source] += 1
-            leftover_budget -= 1
-
-        if all(addition == 0 for addition in staged_additions.values()):
-            fallback_source = sorted(
-                eligible_sources,
-                key=lambda source: (-remaining_records_by_source[source], source),
-            )[0]
-            staged_additions[fallback_source] = 1
-
-        for source, addition in staged_additions.items():
-            allocations[source] += addition
-
-        remaining_budget = ROUND_SAMPLE_SIZE - sum(allocations.values())
-
-    return allocations
-
-
 def select_round_samples(
     records: list[NormalizedRecord],
     analyzed_prompt_ids: set[str],
@@ -449,7 +298,12 @@ def select_round_samples(
         source: len(source_records)
         for source, source_records in sorted(remaining_by_source.items())
     }
-    source_allocations = allocate_source_samples(available_by_source)
+    source_allocations = allocate_source_samples(
+        available_by_source=available_by_source,
+        sample_size=ROUND_SAMPLE_SIZE,
+        min_per_source=MIN_SAMPLES_PER_SOURCE_PER_ROUND,
+        max_source_share=MAX_SOURCE_SHARE_PER_ROUND,
+    )
     effective_round_capacity = sum(
         source_allocations.get(source, 0) for source in available_by_source
     )
@@ -473,7 +327,7 @@ def select_round_samples(
         stratum_queues = {
             key: sorted(
                 stratified_records[key],
-                key=stable_record_order,
+                key=lambda record: stable_record_order(record, SAMPLING_SEED),
             )
             for key in ordered_strata
         }

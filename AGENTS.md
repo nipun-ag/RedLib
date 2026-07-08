@@ -44,6 +44,7 @@ redlib/
 |- convert_sources.py    # Convert raw source formats into canonical JSONL records
 |- audit_corpus.py       # Analyze canonical corpus quality without modifying source data
 |- normalize_corpus.py   # Deterministically normalize prompts from canonical source records
+|- corpus_sampling.py    # Shared deterministic corpus sampling utilities for discovery and experiments
 |- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
 |- classify_corpus.py    # Apply the approved taxonomy across the finalized corpus
 |- ingest.py             # Embed the classified corpus into Qdrant
@@ -236,13 +237,17 @@ Phase 1 - In Development
   structured outputs, minimum-plus-proportional sample allocation, and
   a constrained hierarchical taxonomy proposal that writes to
   `data/corpus/proposed_taxonomy.json`
+- `corpus_sampling.py` centralizes the deterministic source-aware
+  stratified sampling logic shared by taxonomy discovery and
+  classification experiments without becoming its own pipeline stage
 - `classify_corpus.py` is implemented as a corpus-wide taxonomy
   application stage that reads `normalized.jsonl` plus
   `proposed_taxonomy.json`, uses schema-backed Anthropic structured
   outputs with dominant-primary classification rules, writes
   `data/corpus/classified.jsonl`, and supports resume-safe
-  checkpointing, incremental staging, retry logging, and controlled
-  fallback to `Unclear / Needs Review`
+  checkpointing, incremental staging, retry logging, controlled
+  fallback to `Unclear / Needs Review`, and cached stratified
+  experiment sampling via `--sample-size`
 - Ingestion is defined as the final embedding step that consumes only
   classified corpus artifacts
 - Prompt text lives in the `TextNode` body; metadata stores only
