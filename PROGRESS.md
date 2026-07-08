@@ -1,6 +1,60 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Renamed ambiguous taxonomy subtechniques after the baseline
+classification experiment exposed a repeated subtechnique hallucination
+pattern, and marked the taxonomy as human-approved.
+
+Issue:
+- The 500-record baseline experiment produced 12 retries and 12
+  failure events from one recurring validation problem: Claude was
+  returning close paraphrases of approved subtechnique names instead of
+  exact string matches.
+- Under `Role-Based Task Framing`, the classifier hallucinated
+  `Professional or Expert Role` and `Professional or Service Role`
+  while the taxonomy defined
+  `Expert or Specialist Role` and
+  `Functional or Service Role`.
+- Under `Obfuscation / Encoding`, the classifier hallucinated
+  `Euphemistic or Indirect Language` while the taxonomy defined
+  `Format or Structural Manipulation` and
+  `Unicode or Special Character Encoding`.
+
+Change:
+- Renamed `Expert or Specialist Role` to
+  `Specialist-Role Framing`.
+- Renamed `Functional or Service Role` to
+  `Service-Role Framing`.
+- Renamed `Format or Structural Manipulation` to
+  `Structural-Format Obfuscation`.
+- Renamed `Unicode or Special Character Encoding` to
+  `Unicode-Encoding Obfuscation`.
+- Set `human_review_required` to `false` in
+  `data/corpus/proposed_taxonomy.json` to record that the taxonomy has
+  now been human-reviewed and approved before full-corpus
+  classification.
+
+Why this implementation was needed:
+- The old labels were descriptive, but they were still easy for Claude
+  to paraphrase into nearby alternatives that failed exact-match
+  validation.
+- Short, hyphenated, and more distinctive labels reduce the chance that
+  the model drifts into plausible-but-invalid variants during
+  structured classification.
+
+Verification:
+- Confirmed `human_review_required` is now `false`.
+- Confirmed `Role-Based Task Framing` now uses
+  `Specialist-Role Framing` and `Service-Role Framing`.
+- Confirmed `Obfuscation / Encoding` now uses
+  `Structural-Format Obfuscation` and
+  `Unicode-Encoding Obfuscation`.
+- Confirmed the stale baseline experiment artifact paths targeted for
+  cleanup no longer exist in `data/corpus/experiments/`.
+
+---
+
+## 2026-07-08
 Extracted shared deterministic corpus sampling into
 `corpus_sampling.py` and fixed experiment-mode classification sampling
 to stop overfitting to the first source in file order.
