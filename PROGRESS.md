@@ -1,6 +1,51 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Added NVIDIA NIM as a third classification provider so experiment runs
+can target GLM-5.2 without changing the taxonomy, checkpointing, or
+validation pipeline.
+
+Issue:
+- We already had provider-aware experiment support for Anthropic and
+  DeepSeek, but there was no way to test NVIDIA NIM's free-tier hosted
+  models through the same experiment harness.
+- The next experiment target is `z-ai/glm-5.2`, which is available on
+  NVIDIA NIM through an OpenAI-compatible API and has a free tier with
+  a published limit of up to 40 requests per minute.
+
+Change:
+- Added `nvidia` as a third valid value for
+  `REDLIB_CLASSIFY_PROVIDER` in `classify_corpus.py`.
+- Added `get_nvidia_client()` using the OpenAI SDK against
+  `https://integrate.api.nvidia.com/v1` with `NVIDIA_API_KEY`.
+- Added a provider-specific NVIDIA batch classification request path
+  that mirrors the DeepSeek flow: `json_object` responses, JSON-only
+  system prompt suffix, bare-array wrapping before Pydantic
+  validation, character-based input-token estimation, and the same
+  retry, recursive split, and fallback behavior as the other
+  providers.
+- Set the provider-aware default model for the NVIDIA path to
+  `z-ai/glm-5.2`.
+- Added `NVIDIA_MAX_OUTPUT_TOKENS`, defaulting to `6000`, for NVIDIA
+  classification runs.
+- Updated `docs/ARCHITECTURE.md` so the environment variable table now
+  documents `NVIDIA_API_KEY` and the expanded provider choices.
+
+Operational note:
+- `NVIDIA_API_KEY` must be added to Doppler before running NVIDIA NIM
+  classification experiments.
+
+Verification:
+- `python -m py_compile classify_corpus.py`
+- Confirmed `get_nvidia_client()` constructs when `NVIDIA_API_KEY` is
+  present and fails clearly when it is missing.
+- Confirmed the source now includes `z-ai/glm-5.2`, `nvidia`, and
+  `NVIDIA_API_KEY` while leaving the Anthropic and DeepSeek provider
+  paths intact.
+
+---
+
+## 2026-07-08
 Closed the classifier experiment loop and confirmed that Anthropic
 Haiku with the default production settings remains the correct full-
 corpus configuration.
