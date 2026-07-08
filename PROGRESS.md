@@ -1,6 +1,73 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Added provider-aware classification transport support so
+`classify_corpus.py` can target either Anthropic or OpenRouter without
+changing the taxonomy, validation, checkpointing, or experiment
+machinery.
+
+Issue:
+- The classifier was hard-wired to Anthropic structured outputs through
+  `client.messages.parse(...)`, which made the transport and model
+  choice part of the core classification path instead of a swappable
+  provider detail.
+- We wanted to evaluate DeepSeek V4 Pro via OpenRouter for cost and
+  quality tradeoffs, but the script had no provider abstraction and no
+  OpenAI-compatible JSON-schema request path.
+- OpenRouter also lacks Anthropic's `count_tokens(...)` endpoint, so
+  the existing token-estimation logic could not be reused as-is.
+
+Change:
+- Added `REDLIB_CLASSIFY_PROVIDER` with `anthropic` as the default and
+  `openrouter` as the alternate provider path.
+- Added `get_openrouter_client()` using the OpenAI SDK pointed at
+  `https://openrouter.ai/api/v1`, plus a provider-aware `get_client(...)`
+  factory that selects Anthropic or OpenRouter at startup.
+- Kept the existing Anthropic classification path intact while adding a
+  parallel OpenRouter batch request implementation that reuses the same
+  taxonomy prompt, Pydantic schema, validation rules, retries,
+  recursive batch splitting, checkpoint usage accounting, and fallback
+  behavior.
+- Made OpenRouter token estimation character-based with the rough
+  estimate `len(user_prompt) // 4`, used only for logging and token-
+  pressure decisions, while reading actual prompt/completion token usage
+  from the OpenRouter response object.
+- Updated `docs/ARCHITECTURE.md` to document the new
+  `OPENROUTER_API_KEY` and `REDLIB_CLASSIFY_PROVIDER` environment
+  variables.
+
+How to switch providers:
+- Leave `REDLIB_CLASSIFY_PROVIDER` unset, or set it to `anthropic`, to
+  keep the current Claude Haiku classification path.
+- Set `REDLIB_CLASSIFY_PROVIDER=openrouter` to send classification
+  batches to OpenRouter instead.
+- `OPENROUTER_API_KEY` must be added to Doppler before using the
+  OpenRouter path. The helper comment now documents:
+  `doppler secrets set OPENROUTER_API_KEY=<your key>`.
+
+Why this implementation was needed:
+- Provider choice should be a transport concern, not a reason to fork
+  the rest of the classification pipeline.
+- Preserving one shared taxonomy-validation path keeps experiments
+  comparable across vendors instead of letting provider-specific logic
+  drift into separate behavior.
+- The char-based estimate preserves useful logging and batch-splitting
+  safeguards for OpenRouter even though no native token-count endpoint
+  exists there.
+
+Verification:
+- `python -m py_compile classify_corpus.py`
+- Confirmed the source now includes `REDLIB_CLASSIFY_PROVIDER`,
+  `get_openrouter_client(...)`, and
+  `request_batch_classification_openrouter(...)`.
+- In this shell session, the bare system `python` environment does not
+  currently have the `anthropic` or `openai` SDKs installed, so live
+  client-construction checks depend on the project runtime environment
+  rather than the stripped-down interpreter available here.
+
+---
+
+## 2026-07-08
 Removed legacy pre-pipeline ingestion helpers, rewrote `ingest.py` to
 consume finalized `classified.jsonl`, and closed two documentation
 gaps around shared sampling and operational sidecars.

@@ -291,8 +291,9 @@ Qdrant
   optional subtechnique, optional supporting traits, confidence, and a
   short rationale
 - Produced by `classify_corpus.py` through schema-backed structured
-  outputs, resume-safe checkpointing, incremental staging writes, retry
-  tracking, and final atomic replacement of the output artifact
+  outputs, provider-aware transport adapters, resume-safe checkpointing,
+  incremental staging writes, retry tracking, and final atomic
+  replacement of the output artifact
 
 Classified record shape:
 ```json
@@ -523,6 +524,8 @@ all operate on that approved taxonomy output.
 | `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud authentication |
 | `OPENAI_API_KEY`    | `embedder.py`, `ingest.py`      | Embeddings                      |
 | `ANTHROPIC_API_KEY` | `synthesizer.py`                | Claude Haiku 4.5 synthesis      |
+| `OPENROUTER_API_KEY` | `classify_corpus.py`           | OpenRouter authentication for DeepSeek experiment runs |
+| `REDLIB_CLASSIFY_PROVIDER` | `classify_corpus.py`      | Selects Anthropic or OpenRouter for taxonomy classification |
 | `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API               |
 | `HUGGINGFACE_TOKEN` | `fetch_corpus.py`               | Dataset snapshot access         |
 | `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection               |
