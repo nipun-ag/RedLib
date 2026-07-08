@@ -7,3 +7,6 @@ qdrant-client
 llama-index-postprocessor-cohere-rerank
 cohere
 tiktoken
+
+fastapi
+uvicorn
