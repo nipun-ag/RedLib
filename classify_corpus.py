@@ -65,7 +65,10 @@ SUPPORTING_TRAIT_OPTIONS = [
     "Benign Justification",
     "Educational Framing",
     "Roleplay Support",
+    "Historical Context",
+    "Historical or Journalistic Inquiry",
 ]
+SUPPORTING_TRAITS = SUPPORTING_TRAIT_OPTIONS
 SUPPORTING_TRAITS_CLOSED_VOCABULARY = "; ".join(
     f'"{trait}"' for trait in SUPPORTING_TRAIT_OPTIONS
 )

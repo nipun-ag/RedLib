@@ -1,6 +1,57 @@
 # RedLib — Progress Log
 
 ## 2026-07-08
+Patched taxonomy gaps discovered during the full 169k-record
+classification run after repeated retries and recursive batch splits
+made it clear the approved taxonomy was missing semantically valid
+labels the model kept reaching for.
+
+Issue:
+- The full Anthropic Haiku classification run was stopped at roughly
+  51k processed records after repeated validation failures drove up
+  retry volume, recursive batch splitting, and classification cost.
+- The failures were not random hallucinations; they were recurring
+  semantically correct subtechnique and supporting-trait names that
+  were absent from the approved taxonomy or trait vocabulary.
+
+Taxonomy additions:
+- Added under `Simulation or Sandbox Framing`:
+  `Fictional Comparison or Contrast`,
+  `Fictional World or Alternate Reality Setting`,
+  `Hypothetical Scenario with Suspended Ethics`.
+- Added under `Fictional / Hypothetical Framing`:
+  `Parallel Universe or Alternate Reality`,
+  `Hypothetical World or Scenario`.
+- Added under `Role-Based Task Framing`:
+  `Professional or Expert Role`.
+- Added under `Authority or Legitimacy Spoofing`:
+  `Professional or Expert Role`.
+- Added under `Legitimate Context or Research Framing`:
+  `Journalistic Inquiry`,
+  `Journalistic or Historical Inquiry`.
+- Added supporting traits in `classify_corpus.py`:
+  `Historical Context`,
+  `Historical or Journalistic Inquiry`.
+
+Known confusion pattern:
+- The model also sometimes emits primary category names as
+  `supporting_traits`, especially:
+  `Obfuscation / Encoding`,
+  `Dual-Response or Comparative Framing`,
+  `Role-Based Task Framing`,
+  `Euphemistic or Indirect Language`.
+- Those were documented as a model confusion pattern rather than added
+  as supporting traits, because they are primary taxonomy categories
+  and should not be normalized into the trait vocabulary.
+
+Outcome:
+- The approved taxonomy now better matches the label space the model is
+  already using, which should reduce avoidable retries and recursive
+  batch splits when the full corpus run resumes.
+
+---
+
+## 2026-07-08
 Concluded the classifier provider experiments and returned
 `classify_corpus.py` to a single Anthropic Haiku 4.5 path.
 
