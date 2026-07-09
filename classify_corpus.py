@@ -65,8 +65,6 @@ SUPPORTING_TRAIT_OPTIONS = [
     "Benign Justification",
     "Educational Framing",
     "Roleplay Support",
-    "Historical Context",
-    "Historical or Journalistic Inquiry",
 ]
 SUPPORTING_TRAITS = SUPPORTING_TRAIT_OPTIONS
 SUPPORTING_TRAITS_CLOSED_VOCABULARY = "; ".join(
@@ -892,10 +890,15 @@ def validate_classification_output(
         if subtechnique is not None:
             subtechnique_key = canonical_label(subtechnique)
             if subtechnique_key not in allowed_subtechniques:
-                raise ValueError(
-                    f"Model returned invalid subtechnique '{subtechnique}' for category '{resolved_primary_category}'"
+                logger.warning(
+                    "Dropping invalid subtechnique '%s' for category '%s' on prompt_id=%s",
+                    subtechnique,
+                    resolved_primary_category,
+                    prompt_id,
                 )
-            resolved_subtechnique = allowed_subtechniques[subtechnique_key]
+                resolved_subtechnique = None
+            else:
+                resolved_subtechnique = allowed_subtechniques[subtechnique_key]
         else:
             resolved_subtechnique = None
 
@@ -904,7 +907,12 @@ def validate_classification_output(
         for trait in item.supporting_traits:
             trait_name = trait.strip()
             if trait_name not in SUPPORTING_TRAIT_OPTIONS:
-                raise ValueError(f"Model returned unsupported supporting trait: {trait_name}")
+                logger.warning(
+                    "Dropping unsupported supporting trait '%s' on prompt_id=%s",
+                    trait_name,
+                    prompt_id,
+                )
+                continue
             if trait_name in seen_traits:
                 continue
             seen_traits.add(trait_name)
