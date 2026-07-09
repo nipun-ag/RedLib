@@ -1027,9 +1027,31 @@ def request_batch_classification_anthropic(
                 model=model_name,
                 max_tokens=MAX_OUTPUT_TOKENS,
                 temperature=0,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_prompt}],
+                system=[
+                    {
+                        "type": "text",
+                        "text": SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": user_prompt,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                ],
                 output_format=BatchClassificationOutput,
+            )
+            logger.info(
+                "Cache stats: creation=%s read=%s",
+                getattr(response.usage, "cache_creation_input_tokens", 0),
+                getattr(response.usage, "cache_read_input_tokens", 0),
             )
             if response.stop_reason == "max_tokens" or response.parsed_output is None:
                 raise ValueError(
