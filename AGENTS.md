@@ -63,7 +63,8 @@ redlib/
 |     |- audit_report.json
 |     |- normalized.jsonl
 |     |- proposed_taxonomy.json
-|     `- classified.jsonl
+|     |- classified.jsonl # Final classified corpus consumed by ingest
+|     `- classified_with_subtechniques.jsonl # Archive copy with subtechniques preserved
 |- docs/
 |  |- ARCHITECTURE.md
 |  |- CONTEXT.md
@@ -116,6 +117,7 @@ Current corpus pipeline:
 6. Human review approves the taxonomy proposal
 7. `python -m corpus.classify_corpus` applies the approved taxonomy across the corpus
 8. `python -m corpus.ingest` embeds only the finalized `classified.jsonl` corpus into Qdrant
+   while `classified_with_subtechniques.jsonl` remains an archive-only reference copy
 
 Each corpus-stage script has exactly one responsibility:
 - `corpus.fetch_corpus`: acquisition and local snapshotting only
@@ -231,7 +233,7 @@ Phase 1 - In Development
 - `corpus/normalize_corpus.py` is implemented as a deterministic provenance-preserving cleanup stage
 - `corpus/discover_taxonomy.py` is implemented as an LLM-assisted, source-aware, stratified iterative taxonomy proposal stage
 - `corpus/corpus_sampling.py` centralizes the deterministic source-aware stratified sampling logic shared by discovery and experiments
-- `corpus/classify_corpus.py` is implemented as a corpus-wide taxonomy application stage that writes `data/corpus/classified.jsonl`
+- `corpus/classify_corpus.py` is implemented as a corpus-wide taxonomy application stage that produces the final `data/corpus/classified.jsonl` corpus with subtechniques removed and preserves `data/corpus/classified_with_subtechniques.jsonl` as an archive copy
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`

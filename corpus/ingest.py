@@ -9,7 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CORPUS_ROOT = Path("data") / "corpus"
-CLASSIFIED_PATH = CORPUS_ROOT / "classified_clean.jsonl"
+CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
 COLLECTION_NAME = "redlib"
 UPSERT_BATCH_SIZE = 20

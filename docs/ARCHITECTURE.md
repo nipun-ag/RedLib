@@ -59,7 +59,9 @@ redlib/
 |     |- audit_report.json    # Structured corpus quality report
 |     |- normalized.jsonl     # Deterministically normalized corpus
 |     |- proposed_taxonomy.json # Iterative human-review taxonomy proposal
-|     `- classified.jsonl     # Final corpus handed to ingestion
+|     |- classified.jsonl     # Final corpus handed to ingestion
+|     `- classified_with_subtechniques.jsonl
+|                            # Archive copy with subtechniques preserved
 |- frontend/                  # Static frontend assets
 |  |- index.html
 |  |- search.html
@@ -163,13 +165,18 @@ Public Datasets
 - Intended for human review before it becomes operational taxonomy
 
 ### `classified.jsonl`
-- Final approved corpus with applied taxonomy labels
+- Final classified corpus with 168,117 confirmed records
 - Preserves normalized-record provenance and raw source fields
 - Stores one dominant primary jailbreak mechanism per prompt plus
-  optional subtechnique, optional supporting traits, confidence, and a
-  short rationale
+  supporting traits, confidence, and a short rationale
+- Subtechnique field removed from every classification object
 - Produced by `python -m corpus.classify_corpus`
 - Consumed by `python -m corpus.ingest`
+
+### `classified_with_subtechniques.jsonl`
+- Archive copy of the classified corpus with subtechnique preserved
+- Retained for future reference only
+- Not consumed by the pipeline
 
 Classified record shape:
 ```json
@@ -182,7 +189,6 @@ Classified record shape:
   "raw_fields": {},
   "classification": {
     "primary_category": "string",
-    "subtechnique": "string | null",
     "supporting_traits": ["string"],
     "confidence": 0.0,
     "rationale": "string"
