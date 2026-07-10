@@ -28,16 +28,14 @@ logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"
 PROMPT_EXCERPT_CHARS = 500
 TECHNIQUE_CATEGORIES = [
-    ("Persona Hijacking", "psychology_alt"),
-    ("Fictional Framing", "movie"),
-    ("Authority Impersonation", "admin_panel_settings"),
-    ("Token Manipulation", "code"),
-    ("Gradual Escalation", "trending_up"),
-    ("Hypothetical Distancing", "science"),
-    ("Instruction Injection", "edit_note"),
-    ("Social Engineering", "sentiment_very_dissatisfied"),
-    ("Multi-language Switching", "translate"),
-    ("Payload Splitting", "call_split"),
+    ("Role-Based Task Framing", "psychology_alt"),
+    ("Fictional / Hypothetical Framing", "movie"),
+    ("Authority or Legitimacy Spoofing", "admin_panel_settings"),
+    ("Obfuscation / Encoding", "code"),
+    ("Simulation or Sandbox Framing", "science"),
+    ("Dual-Response or Comparative Framing", "call_split"),
+    ("Legitimate Context or Research Framing", "gavel"),
+    ("Contextual Reframing or Euphemism", "edit_note"),
 ]
 CATEGORY_CACHE_TTL_SECONDS = 300
 CATEGORY_CACHE_LOCK = threading.Lock()
@@ -350,7 +348,7 @@ async def query(request: QueryRequest) -> QueryResponse:
 @app.get("/api/categories")
 async def get_categories() -> CategoriesResponse:
     """
-    Returns all 10 technique categories with live corpus counts.
+    Returns all 8 technique categories with live corpus counts.
     """
     try:
         loop = asyncio.get_event_loop()
@@ -403,8 +401,8 @@ async def get_stats() -> StatsResponse:
 
         return StatsResponse(
             total_prompts=total_prompts,
-            total_sources=4,
-            last_sync="2026-06-28",
+            total_sources=6,
+            last_sync="2026-07-10",
         )
     except Exception as e:
         logger.error(

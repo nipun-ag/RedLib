@@ -3,16 +3,14 @@ let activeCategory = null;
 let currentQuery = "";
 let activePromptRequestId = 0;
 const TECHNIQUE_DEFINITIONS = [
-    { name: "Persona Hijacking", icon: "psychology_alt" },
-    { name: "Fictional Framing", icon: "movie" },
-    { name: "Authority Impersonation", icon: "admin_panel_settings" },
-    { name: "Token Manipulation", icon: "code" },
-    { name: "Gradual Escalation", icon: "trending_up" },
-    { name: "Hypothetical Distancing", icon: "science" },
-    { name: "Instruction Injection", icon: "edit_note" },
-    { name: "Social Engineering", icon: "sentiment_very_dissatisfied" },
-    { name: "Multi-language Switching", icon: "translate" },
-    { name: "Payload Splitting", icon: "call_split" },
+    { name: "Role-Based Task Framing", icon: "psychology_alt" },
+    { name: "Fictional / Hypothetical Framing", icon: "movie" },
+    { name: "Authority or Legitimacy Spoofing", icon: "admin_panel_settings" },
+    { name: "Obfuscation / Encoding", icon: "code" },
+    { name: "Simulation or Sandbox Framing", icon: "science" },
+    { name: "Dual-Response or Comparative Framing", icon: "call_split" },
+    { name: "Legitimate Context or Research Framing", icon: "gavel" },
+    { name: "Contextual Reframing or Euphemism", icon: "edit_note" },
 ];
 
 // On page load

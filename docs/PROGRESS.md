@@ -1,4 +1,52 @@
-# RedLib — Progress Log
+﻿# RedLib — Progress Log
+
+## 2026-07-10
+Aligned the hardcoded technique taxonomy across the API, synthesis
+prompt, and frontend with the approved eight-category corpus taxonomy.
+
+Issue:
+- `api/app.py`, `api/synthesizer.py`, and `frontend/js/app.js` were
+  still using an older placeholder taxonomy with 10 category names that
+  no longer matched `data/corpus/proposed_taxonomy.json`.
+- That mismatch would have caused category counts to stay at zero for
+  the real ingested labels and would have made synthesis reference
+  technique names that do not exist in the approved taxonomy.
+
+Change:
+- Replaced the hardcoded technique category lists in `api/app.py` and
+  `frontend/js/app.js` with the approved eight names:
+  `Role-Based Task Framing`,
+  `Fictional / Hypothetical Framing`,
+  `Authority or Legitimacy Spoofing`,
+  `Obfuscation / Encoding`,
+  `Simulation or Sandbox Framing`,
+  `Dual-Response or Comparative Framing`,
+  `Legitimate Context or Research Framing`, and
+  `Contextual Reframing or Euphemism`.
+- Kept the category-icon mapping consistent across backend and
+  frontend.
+- Updated the synthesis system prompt in `api/synthesizer.py` so both
+  the category list and the example answer use the approved taxonomy.
+- Updated `/api/stats` metadata in `api/app.py` so `total_sources=6`
+  and `last_sync="2026-07-10"`.
+
+Why this was needed:
+- The API, frontend, and synthesis layer all need to speak the same
+  taxonomy language as the classified corpus and Qdrant payloads.
+- Keeping these names aligned prevents silent UI drift and avoids
+  misleading summaries that cite non-existent technique families.
+
+Verification:
+- `python -m py_compile api/app.py`
+- `python -m py_compile api/synthesizer.py`
+- Confirmed all approved taxonomy names from
+  `data/corpus/proposed_taxonomy.json` are present in `api/app.py`,
+  `api/synthesizer.py`, and `frontend/js/app.js`
+- Confirmed all placeholder taxonomy names were removed from those
+  three files
+- Confirmed `api/app.py` now reports `total_sources=6`
+
+---
 
 ## 2026-07-10
 Restructured the repository into explicit `api/`, `corpus/`, and
