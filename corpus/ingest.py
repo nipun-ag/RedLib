@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -12,9 +13,11 @@ CORPUS_ROOT = Path("data") / "corpus"
 CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
 COLLECTION_NAME = "redlib"
-UPSERT_BATCH_SIZE = 50
+UPSERT_BATCH_SIZE = 10
 RATE_LIMIT_RETRY_DELAY_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
+
+
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -204,17 +207,28 @@ def build_node(record: dict[str, Any]) -> Any:
     )
 
 
-def get_vector_store_and_client() -> tuple[Any, Any]:
-    from api.retriever import get_vector_store
+def get_ingest_vector_store() -> tuple[Any, Any]:
+    from qdrant_client import QdrantClient
+    from llama_index.vector_stores.qdrant import QdrantVectorStore
 
-    # Keep ingestion pinned to the same QdrantVectorStore shape as retrieval,
-    # including enable_hybrid=True and the dense/sparse vector names.
-    vector_store = get_vector_store()
-    client = getattr(vector_store, "client", None) or getattr(vector_store, "_client", None)
-    if client is None:
-        raise SystemExit(
-            "Unable to access the Qdrant client from api.retriever.get_vector_store()."
+    try:
+        client = QdrantClient(
+            url=os.environ["QDRANT_URL"],
+            api_key=os.environ["QDRANT_API_KEY"],
+            timeout=120,
         )
+    except KeyError as error:
+        raise SystemExit(
+            f"Missing required environment variable for ingestion: {error}"
+        ) from error
+
+    vector_store = QdrantVectorStore(
+        client=client,
+        collection_name="redlib",
+        enable_hybrid=True,
+        dense_vector_name="dense",
+        sparse_vector_name="sparse",
+    )
     return vector_store, client
 
 
@@ -335,7 +349,7 @@ def run_ingestion() -> None:
     )
 
     embed_model = get_embed_model()
-    vector_store, client = get_vector_store_and_client()
+    vector_store, client = get_ingest_vector_store()
     ensure_collection_exists(client)
     ensure_keyword_payload_index(client, "prompt_id")
     ensure_keyword_payload_index(client, "technique")
