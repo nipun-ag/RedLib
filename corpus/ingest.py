@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -188,6 +189,8 @@ def resolve_resume_state(checkpoint: dict[str, Any] | None, total_records: int) 
 def build_node(record: dict[str, Any]) -> Any:
     from llama_index.core.schema import TextNode
 
+    node_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, record["prompt_id"]))
+
     return TextNode(
         text=record["text"],
         metadata={
@@ -197,7 +200,7 @@ def build_node(record: dict[str, Any]) -> Any:
         },
         excluded_embed_metadata_keys=["source", "technique", "prompt_id"],
         excluded_llm_metadata_keys=["source", "technique", "prompt_id"],
-        id_=record["prompt_id"],
+        id_=node_id,
     )
 
 
