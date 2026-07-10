@@ -13,7 +13,7 @@ CORPUS_ROOT = Path("data") / "corpus"
 CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
 COLLECTION_NAME = "redlib"
-UPSERT_BATCH_SIZE = 10
+UPSERT_BATCH_SIZE = 400
 RATE_LIMIT_RETRY_DELAY_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
 
@@ -215,7 +215,7 @@ def get_ingest_vector_store() -> tuple[Any, Any]:
         client = QdrantClient(
             url=os.environ["QDRANT_URL"],
             api_key=os.environ["QDRANT_API_KEY"],
-            timeout=120,
+            timeout=180,
         )
     except KeyError as error:
         raise SystemExit(
