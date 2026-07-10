@@ -192,7 +192,7 @@ def resolve_resume_state(checkpoint: dict[str, Any] | None, total_records: int) 
 def build_node(record: dict[str, Any]) -> Any:
     from llama_index.core.schema import TextNode
 
-    node_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, record["prompt_id"]))
+    node_id = make_node_id(record["prompt_id"])
 
     return TextNode(
         text=record["text"],
@@ -205,6 +205,10 @@ def build_node(record: dict[str, Any]) -> Any:
         excluded_llm_metadata_keys=["source", "technique", "prompt_id"],
         id_=node_id,
     )
+
+
+def make_node_id(prompt_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, prompt_id))
 
 
 def get_ingest_vector_store() -> tuple[Any, Any]:
@@ -230,6 +234,35 @@ def get_ingest_vector_store() -> tuple[Any, Any]:
         sparse_vector_name="sparse",
     )
     return vector_store, client
+
+
+def filter_already_ingested_records(
+    client: Any,
+    records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    if not records:
+        return [], 0
+
+    point_id_by_prompt_id = {
+        record["prompt_id"]: make_node_id(record["prompt_id"])
+        for record in records
+    }
+
+    existing_points = client.retrieve(
+        collection_name=COLLECTION_NAME,
+        ids=list(point_id_by_prompt_id.values()),
+        with_payload=False,
+        with_vectors=False,
+    )
+    existing_ids = {str(point.id) for point in existing_points}
+
+    records_to_insert = [
+        record
+        for record in records
+        if point_id_by_prompt_id[record["prompt_id"]] not in existing_ids
+    ]
+    skipped_count = len(records) - len(records_to_insert)
+    return records_to_insert, skipped_count
 
 
 def ensure_collection_exists(client: Any) -> None:
@@ -355,38 +388,48 @@ def run_ingestion() -> None:
     ensure_keyword_payload_index(client, "technique")
     index = build_index(vector_store, embed_model)
 
-    batch_nodes: list[Any] = []
+    batch_records: list[dict[str, Any]] = []
     last_prompt_id: str | None = None
     total_batches = 0
+    resume_mode = resume_prompt_id is not None
 
     for record in iter_classified_records(after_prompt_id=resume_prompt_id):
-        batch_nodes.append(build_node(record))
+        batch_records.append(record)
         last_prompt_id = record["prompt_id"]
 
-        if len(batch_nodes) < UPSERT_BATCH_SIZE:
+        if len(batch_records) < UPSERT_BATCH_SIZE:
             continue
 
-        total_batches += 1
-        insert_batch_with_retries(index, batch_nodes, total_batches)
-        records_ingested += len(batch_nodes)
-        save_checkpoint(
-            last_ingested_prompt_id=last_prompt_id,
-            records_ingested=records_ingested,
-            total_records=total_records,
-        )
-        progress_percent = (records_ingested / total_records) * 100
-        print(
-            f"Ingested {records_ingested}/{total_records} records "
-            f"({progress_percent:.1f}%) - batch {total_batches} complete"
-        )
-        batch_nodes = []
+        records_to_insert = batch_records
+        skipped_records = 0
+        if resume_mode:
+            records_to_insert, skipped_records = filter_already_ingested_records(
+                client,
+                batch_records,
+            )
+            if skipped_records:
+                logger.warning(
+                    "Skipped %s already-ingested resumed records before batch %s upsert.",
+                    skipped_records,
+                    total_batches + 1,
+                )
 
-    if batch_nodes:
+        if not records_to_insert:
+            if last_prompt_id is None:
+                raise SystemExit("Resume skip path reached a batch without a prompt_id.")
+            records_ingested += skipped_records
+            save_checkpoint(
+                last_ingested_prompt_id=last_prompt_id,
+                records_ingested=records_ingested,
+                total_records=total_records,
+            )
+            batch_records = []
+            continue
+
+        batch_nodes = [build_node(batch_record) for batch_record in records_to_insert]
         total_batches += 1
         insert_batch_with_retries(index, batch_nodes, total_batches)
-        records_ingested += len(batch_nodes)
-        if last_prompt_id is None:
-            raise SystemExit("Ingestion completed a final batch without a prompt_id.")
+        records_ingested += len(batch_records)
         save_checkpoint(
             last_ingested_prompt_id=last_prompt_id,
             records_ingested=records_ingested,
@@ -397,6 +440,49 @@ def run_ingestion() -> None:
             f"Ingested {records_ingested}/{total_records} records "
             f"({progress_percent:.1f}%) - batch {total_batches} complete"
         )
+        batch_records = []
+
+    if batch_records:
+        records_to_insert = batch_records
+        skipped_records = 0
+        if resume_mode:
+            records_to_insert, skipped_records = filter_already_ingested_records(
+                client,
+                batch_records,
+            )
+            if skipped_records:
+                logger.warning(
+                    "Skipped %s already-ingested resumed records before final batch upsert.",
+                    skipped_records,
+                )
+
+        total_batches += 1
+        if not records_to_insert:
+            if last_prompt_id is None:
+                raise SystemExit("Resume skip path reached a final batch without a prompt_id.")
+            records_ingested += skipped_records
+            save_checkpoint(
+                last_ingested_prompt_id=last_prompt_id,
+                records_ingested=records_ingested,
+                total_records=total_records,
+            )
+            total_batches -= 1
+        else:
+            batch_nodes = [build_node(batch_record) for batch_record in records_to_insert]
+            insert_batch_with_retries(index, batch_nodes, total_batches)
+            records_ingested += len(batch_records)
+            if last_prompt_id is None:
+                raise SystemExit("Ingestion completed a final batch without a prompt_id.")
+            save_checkpoint(
+                last_ingested_prompt_id=last_prompt_id,
+                records_ingested=records_ingested,
+                total_records=total_records,
+            )
+            progress_percent = (records_ingested / total_records) * 100
+            print(
+                f"Ingested {records_ingested}/{total_records} records "
+                f"({progress_percent:.1f}%) - batch {total_batches} complete"
+            )
 
     runtime_seconds = time.perf_counter() - started_at
     print(f"Total records ingested: {records_ingested}")
