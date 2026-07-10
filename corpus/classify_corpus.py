@@ -9,8 +9,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from corpus_sampling import NormalizedRecord, select_stratified_sample
-from pydantic import BaseModel, Field, ValidationError
+from .corpus_sampling import NormalizedRecord, select_stratified_sample
+
+try:
+    from pydantic import BaseModel, Field, ValidationError
+except ImportError:  # pragma: no cover - fallback for structure-only imports
+    class ValidationError(Exception):
+        """Fallback placeholder used when pydantic is unavailable."""
+
+
+    class BaseModel:
+        """Fallback placeholder used when pydantic is unavailable."""
+
+        @classmethod
+        def model_json_schema(cls) -> dict[str, Any]:
+            raise ImportError(
+                "pydantic is required to run corpus.classify_corpus. "
+                "Install project dependencies before executing this module."
+            )
+
+        def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise ImportError(
+                "pydantic is required to run corpus.classify_corpus. "
+                "Install project dependencies before executing this module."
+            )
+
+
+    def Field(default: Any = None, **kwargs: Any) -> Any:
+        return default
 
 if TYPE_CHECKING:
     from anthropic import Anthropic

@@ -1,10 +1,9 @@
 import logging
-from llama_index.core.query_engine import RetrieverQueryEngine
 
 logger = logging.getLogger(__name__)
 
 
-def get_query_engine(retriever, reranker, synthesizer) -> RetrieverQueryEngine:
+def get_query_engine(retriever, reranker, synthesizer):
     """Create a single corpus-grounded query engine for all user queries.
 
     Args:
@@ -16,6 +15,8 @@ def get_query_engine(retriever, reranker, synthesizer) -> RetrieverQueryEngine:
         RetrieverQueryEngine configured for Qdrant-backed retrieval
     """
     try:
+        from llama_index.core.query_engine import RetrieverQueryEngine
+
         query_engine = RetrieverQueryEngine.from_args(
             retriever=retriever,
             node_postprocessors=[reranker],

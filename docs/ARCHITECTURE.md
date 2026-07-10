@@ -34,46 +34,50 @@ Frontend assets live under `frontend/` as static HTML/CSS/JS.
 
 ```text
 redlib/
-|- app.py                  # FastAPI app entry point. All API routes.
-|- rag.py                  # Assembles the full LlamaIndex query pipeline.
-|- fetch_corpus.py         # Snapshots public datasets and raw source files into local corpus storage.
-|- convert_sources.py      # Converts raw source formats into canonical JSONL records.
-|- audit_corpus.py         # Analyzes canonical corpus quality without modifying it.
-|- normalize_corpus.py     # Deterministically normalizes prompt records from canonical JSONL.
-|- corpus_sampling.py      # Shared deterministic sampling helpers for discovery and experiments.
-|- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
-|- classify_corpus.py      # Applies the approved taxonomy across the corpus.
-|- strip_subtechniques.py  # Removes subtechnique from classification for ingestion.
-|- ingest.py               # Embeds finalized cleaned corpus into Qdrant.
-|- embedder.py             # Configures OpenAI text-embedding-3-small.
-|- retriever.py            # Configures Qdrant hybrid retrieval and Cohere rerank.
-|- router.py               # Builds the corpus-grounded RetrieverQueryEngine.
-|- synthesizer.py          # Configures response synthesis with Claude Haiku 4.5.
+|- api/
+|  |- __init__.py
+|  |- app.py                  # FastAPI app entry point. All API routes.
+|  |- rag.py                  # Assembles the full LlamaIndex query pipeline.
+|  |- embedder.py             # Configures OpenAI text-embedding-3-small.
+|  |- retriever.py            # Configures Qdrant hybrid retrieval and Cohere rerank.
+|  |- router.py               # Builds the corpus-grounded RetrieverQueryEngine.
+|  `- synthesizer.py          # Configures response synthesis with Claude Haiku 4.5.
+|- corpus/
+|  |- __init__.py
+|  |- fetch_corpus.py         # Snapshots public datasets and raw source files into local corpus storage.
+|  |- convert_sources.py      # Converts raw source formats into canonical JSONL records.
+|  |- audit_corpus.py         # Analyzes canonical corpus quality without modifying it.
+|  |- normalize_corpus.py     # Deterministically normalizes prompt records from canonical JSONL.
+|  |- corpus_sampling.py      # Shared deterministic sampling helpers for discovery and experiments.
+|  |- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
+|  |- classify_corpus.py      # Applies the approved taxonomy across the corpus.
+|  `- ingest.py               # Embeds finalized classified corpus into Qdrant.
 |- data/
 |  `- corpus/
-|     |- raw/              # Immutable source dataset snapshots
-|     |- canonical/        # Canonical JSONL records with full provenance
-|     |- audit_report.json # Structured corpus quality report
-|     |- normalized.jsonl  # Deterministically normalized corpus
+|     |- raw/                 # Immutable source dataset snapshots
+|     |- canonical/           # Canonical JSONL records with full provenance
+|     |- audit_report.json    # Structured corpus quality report
+|     |- normalized.jsonl     # Deterministically normalized corpus
 |     |- proposed_taxonomy.json # Iterative human-review taxonomy proposal
-|     |- classified.jsonl  # Original classified corpus with subtechnique preserved
-|     `- classified_clean.jsonl # Subtechnique-stripped corpus handed to ingestion
-|- frontend/               # Static frontend assets
-|  |- index.html           # Landing page
-|  |- search.html          # Main search interface
+|     `- classified.jsonl     # Final corpus handed to ingestion
+|- frontend/                  # Static frontend assets
+|  |- index.html
+|  |- search.html
 |  |- css/
 |  |  `- style.css
 |  `- js/
 |     |- config.js
 |     `- app.js
 |- docs/
-|  |- ARCHITECTURE.md      # This file
-|  `- CONTEXT.md           # Synthesis prompt rules and taxonomy philosophy
-|- requirements.txt        # Python dependencies
-|- AGENTS.md               # Coding-agent instructions
-|- DESIGN.md               # Design system and UI guidance
-|- PROGRESS.md             # Historical engineering log
-`- README.md               # Human-facing project description
+|  |- ARCHITECTURE.md         # This file
+|  |- CONTEXT.md              # Synthesis prompt rules and taxonomy philosophy
+|  |- DESIGN.md               # Design system and UI guidance
+|  `- PROGRESS.md             # Historical engineering log
+|- requirements.txt
+|- .env.example
+|- .gitignore
+|- AGENTS.md
+`- README.md
 ```
 
 ---
@@ -84,157 +88,41 @@ redlib/
 
 ```text
 Public Datasets
-│
-├── fetch_corpus.py
-│      Download and locally snapshot every source into the reproducible corpus.
-│      Supports multiple acquisition platforms such as Hugging Face
-│      datasets and raw GitHub-hosted files.
-│      Attempts every configured source, records per-source successes
-│      and failures, and only replaces the canonical raw corpus when
-│      all required sources succeed.
-│
-▼
-data/corpus/raw/
-│      Exact copies of every source dataset in their original formats.
-│      No parsing, cleaning, or modification.
-│
-▼
-convert_sources.py
-│      Convert supported raw source formats into canonical JSONL.
-│      Preserve every original field and full provenance.
-│      Perform structural conversion only.
-│      No prompt extraction, no cleaning, and no semantic changes.
-│
-▼
-data/corpus/canonical/
-│      One canonical JSONL input format for every downstream corpus stage.
-│      Each record stores source provenance plus the untouched source fields.
-│
-▼
-audit_corpus.py
-│      Analyze canonical corpus quality.
-│      Detect placeholders, HTML entities, duplicates, malformed lines,
-│      truncation, encoding issues, and schema variation.
-│      Never modify the data.
-│
-▼
-audit_report.json
-│      Structured quality report used for engineering decisions.
-│
-▼
-normalize_corpus.py
-│      Deterministically normalize prompt text from an explicitly mapped field.
-│      Field mappings define corpus scope before cleanup begins.
-│      Decode HTML entities, normalize whitespace,
-│      remove invalid control characters,
-│      standardize formatting,
-│      while preserving semantic meaning.
-│      Never perform semantic filtering.
-│
-▼
-normalized.jsonl
-│      Clean, ingestion-ready corpus.
-│
-▼
-discover_taxonomy.py
-│      Analyze the normalized corpus in deterministic source-aware rounds.
-│      Use stratified sampling and iterative LLM-assisted discovery.
-│      Continue until saturation or max iterations.
-│      Produce a proposed attack taxonomy for human review rather than
-│      a final corpus-wide classification.
-│
-▼
-proposed_taxonomy.json
-│      Human-review taxonomy proposal with iteration history,
-│      saturation status, and code-computed evidence counts.
-│
-▼
-classify_corpus.py
-│      Apply the approved taxonomy consistently across the corpus.
-│
-▼
-classified.jsonl
-│      Final corpus used for embedding.
-│
-▼
-ingest.py
-│      Generate embeddings and write the classified corpus into Qdrant.
-│
-▼
-Qdrant
+      -> python -m corpus.fetch_corpus
+      -> data/corpus/raw/
+      -> python -m corpus.convert_sources
+      -> data/corpus/canonical/
+      -> python -m corpus.audit_corpus
+      -> data/corpus/audit_report.json
+      -> python -m corpus.normalize_corpus
+      -> data/corpus/normalized.jsonl
+      -> python -m corpus.discover_taxonomy
+      -> data/corpus/proposed_taxonomy.json
+      -> human review
+      -> python -m corpus.classify_corpus
+      -> data/corpus/classified.jsonl
+      -> python -m corpus.ingest
+      -> Qdrant
 ```
-
-Operational ingestion handoff:
-```text
-classified.jsonl -> strip_subtechniques.py -> classified_clean.jsonl -> ingest.py -> Qdrant
-```
-
-`classified.jsonl` remains the original classified archive.
-`classified_clean.jsonl` is the ingestion artifact consumed by `ingest.py`.
 
 ### Why The Pipeline Is Staged
 
-- `fetch_corpus.py` exists so dataset acquisition is reproducible and
-  separated from every downstream transformation.
-- The fetch stage may pull from multiple source platforms, but every
-  source is still snapshotted into the same canonical local raw corpus
-  layout before any audit or normalization work begins.
-- Fetch failures are isolated per source so one broken upstream source
-  does not prevent RedLib from observing the rest of the run.
-- Canonical replacement of `data/corpus/raw/` happens only when all
-  required sources succeed; otherwise the previous canonical raw corpus
-  remains in place and the run writes a failure summary instead.
-- `convert_sources.py` exists so downstream stages never need to know
-  whether an upstream source arrived as JSONL, CSV, or another platform-
-  native format.
-- The conversion stage is structural only: it preserves every source
-  field and provenance without deciding which field is the jailbreak
-  prompt or applying any cleanup rules.
-- `audit_corpus.py` exists so quality problems are measured before
+- `corpus.fetch_corpus` exists so dataset acquisition is reproducible
+  and separated from every downstream transformation.
+- `corpus.convert_sources` exists so downstream stages never need to
+  know whether an upstream source arrived as JSONL, CSV, or another
+  platform-native format.
+- `corpus.audit_corpus` exists so quality problems are measured before
   cleanup rules are chosen, rather than hidden by eager mutation.
-- Dataset-specific prompt-field mappings are corpus-design decisions:
-  they decide which variant of a source record belongs inside RedLib's
-  jailbreak corpus before normalization begins.
-- Corpus scope is mechanism-based: records belong when the selected
-  prompt field contains an adversarial jailbreak attempt rather than a
-  standalone harmful request with no safety-bypass mechanism.
-- `normalize_corpus.py` exists so ingestion receives a stable prompt
-  format and corpus cleanup stays deterministic after that field has
-  already been selected.
-- Normalization does not inspect labels, metadata values, split names,
-  or completions to decide which records belong in the corpus.
-- `discover_taxonomy.py` exists so RedLib's labels emerge from the data
-  instead of being permanently hardcoded up front.
-- Taxonomy discovery is iterative rather than one-pass: deterministic
-  code controls source-aware stratified sampling, minimum per-source
-  coverage, proportional remainder allocation, anti-dominance caps,
-  iteration count, saturation detection, and evidence accounting while
-  the LLM proposes or refines candidate families from excerpts.
-- Taxonomy discovery uses schema-backed structured outputs so the stage
-  receives validated structured data rather than parsing free-form JSON.
-- The LLM is intentionally not asked to produce counts, provenance,
-  representative excerpts, or long summaries; Python computes those
-  deterministically from cited sample IDs after the model makes
-  category judgments.
-- The proposed taxonomy is hierarchical rather than flat: durable
-  jailbreak mechanism families appear at the top level while narrower
-  prompt variants are captured as subtechniques beneath them.
-- Discovery is constrained to prefer recognizable red-team terminology,
-  repeated evidence, and merges into broad families over proliferating
-  one-off top-level labels.
-- `corpus_sampling.py` is a shared utility module used by taxonomy
-  discovery and sampled classification experiments so both paths draw
-  from the corpus with the same deterministic source-aware stratified
-  selection logic.
-- Human review exists between discovery and classification so the
-  taxonomy reflects research judgment, not only automated clustering.
-- `classify_corpus.py` exists so taxonomy application is consistent,
-  corpus-wide, and auditable as a separate operation.
-- `strip_subtechniques.py` exists so ingestion consumes a stable
-  classification shape that omits partial subtechnique coverage while
-  preserving the original classified archive for future reference.
-- `ingest.py` exists only to embed and index the finalized clean
-  corpus, not to make corpus-preparation decisions.
+- `corpus.normalize_corpus` exists so ingestion receives a stable
+  prompt format and corpus cleanup stays deterministic after the prompt
+  field has already been selected.
+- `corpus.discover_taxonomy` exists so RedLib's labels emerge from the
+  data instead of being permanently hardcoded up front.
+- `corpus.classify_corpus` exists so taxonomy application is
+  consistent, corpus-wide, and auditable as a separate operation.
+- `corpus.ingest` exists only to embed and index the finalized corpus,
+  not to make corpus-preparation decisions.
 
 ---
 
@@ -265,27 +153,6 @@ classified.jsonl -> strip_subtechniques.py -> classified_clean.jsonl -> ingest.p
 - Scoped to adversarial jailbreak prompts rather than pure harmful
   requests with no jailbreak mechanism
 
-### Field Mapping And Corpus Scope
-- `normalize_corpus.py` uses explicit per-source, per-file field
-  mappings to choose the prompt-bearing field before structural cleanup.
-- Those mappings are part of RedLib's corpus design, not a semantic
-  filtering algorithm inside normalization.
-- After a field is selected, normalization only performs deterministic
-  cleanup on that field and writes a normalized record when the cleaned
-  text is non-empty.
-- If the mapped field is empty, the record is skipped for a structural
-  reason: there is no prompt text in the configured field to normalize.
-- This is distinct from semantic filtering. The stage does not keep or
-  drop rows based on harmful/benign labels, metadata values, split
-  semantics, or completion text.
-- RedLib v1 intentionally maps WildJailbreak to the `adversarial`
-  prompt field. Its `vanilla` field is excluded by corpus scope because
-  RedLib is a jailbreak-prompt corpus, not a corpus of original
-  non-jailbreak prompts.
-- RedLib also excludes source datasets whose primary content is direct
-  harmful requests without an adversarial jailbreak mechanism, even if
-  those requests are useful for other evaluation settings.
-
 ### `proposed_taxonomy.json`
 - Iterative taxonomy proposal derived from the normalized corpus
 - Stores a hierarchical taxonomy with broad top-level mechanism
@@ -293,20 +160,16 @@ classified.jsonl -> strip_subtechniques.py -> classified_clean.jsonl -> ingest.p
 - Records sampling strategy, iteration history, and saturation status
 - Uses code-computed support counts and source distribution from cited
   analyzed samples rather than model-invented numbers
-- Includes structured-output and token-usage diagnostics for each round
 - Intended for human review before it becomes operational taxonomy
 
 ### `classified.jsonl`
 - Final approved corpus with applied taxonomy labels
-- Preserved as the original classified archive
 - Preserves normalized-record provenance and raw source fields
 - Stores one dominant primary jailbreak mechanism per prompt plus
   optional subtechnique, optional supporting traits, confidence, and a
   short rationale
-- Produced by `classify_corpus.py` through schema-backed structured
-  outputs, provider-aware transport adapters, resume-safe checkpointing,
-  incremental staging writes, retry tracking, and final atomic
-  replacement of the output artifact
+- Produced by `python -m corpus.classify_corpus`
+- Consumed by `python -m corpus.ingest`
 
 Classified record shape:
 ```json
@@ -327,25 +190,17 @@ Classified record shape:
 }
 ```
 
-### `classified_clean.jsonl`
-- Subtechnique-stripped version of `classified.jsonl`
-- This is the file consumed by `ingest.py`
-- Preserves the original record shape except that
-  `classification.subtechnique` is removed entirely
-- Keeps `classified.jsonl` available as the original archive with
-  partial subtechnique data for future reference
-
 ### Operational Sidecars
 
 ### `classified_staging.jsonl`
-- Staging file written during `classify_corpus.py` runs
+- Staging file written during `python -m corpus.classify_corpus` runs
 - Atomically replaces `classified.jsonl` on successful completion
 
 ### `classified_checkpoint.json`
 - Checkpoint tracking classification progress for resume support
 
 ### `classification_failures.jsonl`
-- Per-batch failure log written during `classify_corpus.py` runs
+- Per-batch failure log written during `python -m corpus.classify_corpus` runs
 
 ### `classification_debug/`
 - Debug payloads written on structured output failures during classification
@@ -354,18 +209,18 @@ Classified record shape:
 - Debug payloads written on structured output failures during taxonomy discovery
 
 ### `experiments/`
-- Isolated experiment outputs from `classify_corpus.py` experiment mode
-- Never consumed by `ingest.py`
+- Isolated experiment outputs from `python -m corpus.classify_corpus` experiment mode
+- Never consumed by `python -m corpus.ingest`
 
 ### `experiments/samples/`
-- Reusable stratified sample files generated by `corpus_sampling.py`
+- Reusable stratified sample files generated by `corpus/corpus_sampling.py`
 - Used for experiment runs
 
 ### `raw/fetch_run_summary.json`
-- Run-level summary written by `fetch_corpus.py` after each acquisition run
+- Run-level summary written by `python -m corpus.fetch_corpus` after each acquisition run
 
 ### `raw/<source>/fetch_metadata.json`
-- Per-source acquisition metadata written by `fetch_corpus.py`
+- Per-source acquisition metadata written by `python -m corpus.fetch_corpus`
 
 ---
 
@@ -375,17 +230,17 @@ The query path remains corpus-grounded end to end:
 
 ```text
 User query (POST /api/query)
-      -> router.py
+      -> api.app
 Build single RetrieverQueryEngine
-      -> retriever.py
+      -> api.router
 Dense + sparse retrieval from Qdrant
       -> QueryFusionRetriever
 Reciprocal rank fusion
       -> CohereRerank
 Top reranked nodes
-      -> synthesizer.py
+      -> api.synthesizer
 Claude Haiku grounded synthesis
-      -> app.py
+      -> api.app
 Assemble answer + result cards + technique breakdown
       ->
 JSON response to frontend
@@ -436,8 +291,6 @@ Implementation details:
 - `prompt_excerpt` is built from the node body, not from metadata
 - `query_type` is always `"semantic"` because all queries use the same
   corpus-grounded retrieval path
-- full prompt text is intentionally not included in every search result;
-  the frontend fetches it separately on demand
 
 ### GET /api/categories
 Returns the approved taxonomy categories and live corpus counts used by
@@ -446,32 +299,8 @@ the frontend filter sidebar.
 ### GET /api/prompts/{prompt_id}
 Fetches one full prompt on demand for explicit result inspection.
 
-Response:
-```json
-{
-  "id": "string",
-  "full_prompt": "string",
-  "technique": "string",
-  "source": "string"
-}
-```
-
-Implementation details:
-- looks up exactly one Qdrant record by metadata field `prompt_id`
-- relies on a Qdrant keyword payload index on `prompt_id`
-- reconstructs the stored `TextNode` and returns the node body as
-  `full_prompt`
-- returns `404` if no matching prompt exists
-- returns `500` if the Qdrant lookup fails
-- does not initialize or run the RAG query pipeline
-
 ### GET /api/stats
 Returns corpus statistics for the frontend stats bar.
-
-Implementation details:
-- `total_prompts` is read live from the Qdrant `redlib` collection
-- `total_sources` reflects the configured source set
-- `last_sync` is returned as an API field for UI display
 
 ---
 
@@ -497,11 +326,6 @@ Payload schema:
 }
 ```
 
-Notes:
-- Qdrant payload does not include `subtechnique`.
-- `ingest.py` reads `classified_clean.jsonl`, whose classification
-  object no longer carries a `subtechnique` key.
-
 Payload indexes:
 - `prompt_id`: `keyword`
 - used by `GET /api/prompts/{prompt_id}` for direct full-prompt lookup
@@ -513,46 +337,31 @@ Node content:
 
 ---
 
-## Taxonomy Surface
-
-RedLib's taxonomy is not intended to be a permanently predefined label
-set. The operational category list comes from:
-
-1. corpus normalization
-2. taxonomy discovery
-3. human review
-4. corpus-wide classification
-
-At query time, the frontend filters, retrieval metadata, and synthesis
-all operate on that approved taxonomy output.
-
----
-
 ## LlamaIndex Component Map
 
-| Module           | LlamaIndex Class       | Role                        |
-|------------------|------------------------|-----------------------------|
-| `embedder.py`    | `OpenAIEmbedding`      | text-embedding-3-small      |
-| `retriever.py`   | `QueryFusionRetriever` | Hybrid search + RRF         |
-| `retriever.py`   | `QdrantVectorStore`    | Dense + sparse vector store |
-| `retriever.py`   | `CohereRerank`         | Reranking postprocessor     |
-| `router.py`      | `RetrieverQueryEngine` | Single corpus-grounded query engine |
-| `synthesizer.py` | `ResponseSynthesizer`  | Answer generation           |
-| `synthesizer.py` | `Anthropic`            | LLM for synthesis           |
+| Module              | LlamaIndex Class       | Role                        |
+|---------------------|------------------------|-----------------------------|
+| `api/embedder.py`   | `OpenAIEmbedding`      | text-embedding-3-small      |
+| `api/retriever.py`  | `QueryFusionRetriever` | Hybrid search + RRF         |
+| `api/retriever.py`  | `QdrantVectorStore`    | Dense + sparse vector store |
+| `api/retriever.py`  | `CohereRerank`         | Reranking postprocessor     |
+| `api/router.py`     | `RetrieverQueryEngine` | Single corpus-grounded query engine |
+| `api/synthesizer.py`| `ResponseSynthesizer`  | Answer generation           |
+| `api/synthesizer.py`| `Anthropic`            | LLM for synthesis           |
 
 ---
 
 ## Environment Variables
 
-| Variable            | Used By                         | Purpose                         |
-|---------------------|---------------------------------|---------------------------------|
-| `QDRANT_URL`        | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud endpoint     |
-| `QDRANT_API_KEY`    | `app.py`, `retriever.py`, `ingest.py` | Qdrant Cloud authentication |
-| `OPENAI_API_KEY`    | `embedder.py`, `ingest.py`      | Embeddings                      |
-| `ANTHROPIC_API_KEY` | `synthesizer.py`                | Claude Haiku 4.5 synthesis      |
-| `COHERE_API_KEY`    | `retriever.py`                  | Cohere Rerank API               |
-| `HUGGINGFACE_TOKEN` | `fetch_corpus.py`               | Dataset snapshot access         |
-| `DOPPLER_TOKEN`     | deployment/runtime              | Secrets injection               |
+| Variable            | Used By                                  | Purpose                      |
+|---------------------|-------------------------------------------|------------------------------|
+| `QDRANT_URL`        | `api/app.py`, `api/retriever.py`, `corpus/ingest.py` | Qdrant Cloud endpoint |
+| `QDRANT_API_KEY`    | `api/app.py`, `api/retriever.py`, `corpus/ingest.py` | Qdrant authentication |
+| `OPENAI_API_KEY`    | `api/embedder.py`, `corpus/ingest.py`     | Embeddings                   |
+| `ANTHROPIC_API_KEY` | `api/synthesizer.py`, `corpus/discover_taxonomy.py`, `corpus/classify_corpus.py` | Claude Haiku usage |
+| `COHERE_API_KEY`    | `api/retriever.py`                        | Cohere Rerank API            |
+| `HUGGINGFACE_TOKEN` | `corpus/fetch_corpus.py`                  | Dataset snapshot access      |
+| `DOPPLER_TOKEN`     | deployment/runtime                        | Secrets injection            |
 
 ---
 
@@ -570,7 +379,7 @@ pip install -r requirements.txt
 doppler login
 doppler setup
 
-doppler run -- uvicorn app:app --reload --port 8000
+doppler run -- uvicorn api.app:app --reload --port 8000
 ```
 
 Frontend assets can be opened directly from `frontend/` or served with

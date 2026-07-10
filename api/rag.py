@@ -1,9 +1,9 @@
 import logging
 from llama_index.core.query_engine import RetrieverQueryEngine
-from embedder import get_embed_model
-from retriever import get_retriever, get_reranker
-from synthesizer import get_synthesizer
-from router import get_query_engine
+from .embedder import get_embed_model
+from .retriever import get_retriever, get_reranker
+from .synthesizer import get_synthesizer
+from .router import get_query_engine
 
 logger = logging.getLogger(__name__)
 

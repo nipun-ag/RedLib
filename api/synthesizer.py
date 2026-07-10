@@ -1,8 +1,6 @@
 import os
 import logging
-from llama_index.llms.anthropic import Anthropic
-from llama_index.core.response_synthesizers import get_response_synthesizer
-from llama_index.core.prompts import PromptTemplate
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +48,12 @@ If the retrieved chunks are off-topic, low-confidence, or don't match the query:
 - Do NOT invent or hallucinate an answer
 - Suggest rephrasing the query if helpful"""
 
-TEXT_QA_TEMPLATE = PromptTemplate(
-    SYSTEM_PROMPT
-    + """
+def build_prompt_templates() -> tuple[Any, Any]:
+    from llama_index.core.prompts import PromptTemplate
+
+    text_qa_template = PromptTemplate(
+        SYSTEM_PROMPT
+        + """
 
 Context information is below.
 ---------------------
@@ -61,11 +62,11 @@ Context information is below.
 Given the context information and not prior knowledge, answer the query.
 Query: {query_str}
 Answer: """
-)
+    )
 
-REFINE_TEMPLATE = PromptTemplate(
-    SYSTEM_PROMPT
-    + """
+    refine_template = PromptTemplate(
+        SYSTEM_PROMPT
+        + """
 
 The original query is as follows: {query_str}
 We have provided an existing answer: {existing_answer}
@@ -76,10 +77,11 @@ We have the opportunity to refine the existing answer only if needed with some m
 Given the new context, refine the original answer to better answer the query while preserving all RedLib constraints above.
 If the context is not useful, return the original answer.
 Refined Answer: """
-)
+    )
+    return text_qa_template, refine_template
 
 
-def get_llm() -> Anthropic:
+def get_llm() -> Any:
     """Configure and return Claude Haiku LLM for synthesis.
 
     Raises:
@@ -96,6 +98,8 @@ def get_llm() -> Anthropic:
         raise ValueError(error_msg)
 
     try:
+        from llama_index.llms.anthropic import Anthropic
+
         llm = Anthropic(
             model="claude-haiku-4-5",
             max_tokens=300,
@@ -118,13 +122,16 @@ def get_synthesizer():
         ValueError: If LLM configuration fails
     """
     try:
+        from llama_index.core.response_synthesizers import get_response_synthesizer
+
         llm = get_llm()
+        text_qa_template, refine_template = build_prompt_templates()
 
         synthesizer = get_response_synthesizer(
             response_mode="compact",
             llm=llm,
-            text_qa_template=TEXT_QA_TEMPLATE,
-            refine_template=REFINE_TEMPLATE,
+            text_qa_template=text_qa_template,
+            refine_template=refine_template,
         )
 
         logger.info("ResponseSynthesizer configured with RedLib prompt templates")

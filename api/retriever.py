@@ -1,19 +1,11 @@
 import os
 import logging
-from typing import Optional
-from llama_index.core import VectorStoreIndex
-from llama_index.core.retrievers import QueryFusionRetriever
-from llama_index.core.schema import NodeWithScore
-from llama_index.vector_stores.qdrant import QdrantVectorStore
-from llama_index.postprocessor.cohere_rerank import CohereRerank
-from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
-from qdrant_client import QdrantClient
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def get_vector_store():
+def get_vector_store() -> Any:
     """Connect to Qdrant Cloud and return a QdrantVectorStore.
 
     Reads QDRANT_URL and QDRANT_API_KEY from environment variables.
@@ -38,6 +30,9 @@ def get_vector_store():
         raise ValueError(error_msg)
 
     try:
+        from qdrant_client import QdrantClient
+        from llama_index.vector_stores.qdrant import QdrantVectorStore
+
         client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
         vector_store = QdrantVectorStore(
             client=client,
@@ -53,7 +48,7 @@ def get_vector_store():
         raise
 
 
-def get_retriever(embed_model, top_k: int = 20):
+def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
     """Configure hybrid retriever with dense + sparse search and RRF.
 
     Args:
@@ -67,6 +62,9 @@ def get_retriever(embed_model, top_k: int = 20):
     vector_store = get_vector_store()
 
     # Create VectorStoreIndex
+    from llama_index.core import VectorStoreIndex
+    from llama_index.core.retrievers import QueryFusionRetriever, VectorIndexRetriever
+
     index_obj = VectorStoreIndex.from_vector_store(
         vector_store=vector_store, embed_model=embed_model
     )
@@ -96,7 +94,7 @@ def get_retriever(embed_model, top_k: int = 20):
     return retriever
 
 
-def get_reranker(top_n: int = 5) -> CohereRerank:
+def get_reranker(top_n: int = 5) -> Any:
     """Configure Cohere reranker postprocessor.
 
     Args:
@@ -115,6 +113,8 @@ def get_reranker(top_n: int = 5) -> CohereRerank:
         logger.error(error_msg)
         raise ValueError(error_msg)
 
+    from llama_index.postprocessor.cohere_rerank import CohereRerank
+
     reranker = CohereRerank(
         model="rerank-english-v3.0",
         top_n=top_n,
@@ -127,10 +127,10 @@ def get_reranker(top_n: int = 5) -> CohereRerank:
 
 def retrieve(
     query: str,
-    retriever,
-    reranker,
+    retriever: Any,
+    reranker: Any,
     category_filter: Optional[str] = None,
-) -> list[NodeWithScore]:
+) -> list[Any]:
     """Run hybrid retrieval + reranking pipeline.
 
     Args:
@@ -145,6 +145,12 @@ def retrieve(
     try:
         # Build metadata filter if category provided
         if category_filter:
+            from llama_index.core.vector_stores import (
+                FilterOperator,
+                MetadataFilter,
+                MetadataFilters,
+            )
+
             filters = MetadataFilters(
                 filters=[
                     MetadataFilter(

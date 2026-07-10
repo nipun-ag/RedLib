@@ -26,103 +26,105 @@ Frontend:
 - Static assets live in `frontend/`
 
 Backend:
-- FastAPI app in `app.py`
-- Query pipeline assembled in `rag.py`
+- FastAPI app in `api/app.py`
+- Query pipeline assembled in `api/rag.py`
 - Retrieval backed by Qdrant Cloud
 
 Local dev:
-  Backend: `doppler run -- uvicorn app:app --reload --port 8000`
+  Backend: `doppler run -- uvicorn api.app:app --reload --port 8000`
   Frontend: open `frontend/index.html` directly in browser, or use
             any static file server from the `frontend/` directory
 
 ## File Structure
 ```text
 redlib/
-|- app.py                # FastAPI app, all API routes
-|- rag.py                # LlamaIndex query pipeline (entry point)
-|- fetch_corpus.py       # Snapshot public datasets into local raw corpus storage
-|- convert_sources.py    # Convert raw source formats into canonical JSONL records
-|- audit_corpus.py       # Analyze canonical corpus quality without modifying source data
-|- normalize_corpus.py   # Deterministically normalize prompts from canonical source records
-|- corpus_sampling.py    # Shared deterministic corpus sampling utilities for discovery and experiments
-|- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
-|- classify_corpus.py    # Apply the approved taxonomy across the finalized corpus
-|- strip_subtechniques.py # Remove subtechnique from classified records before ingestion
-|- ingest.py             # Embed the cleaned classified corpus into Qdrant
-|- embedder.py           # OpenAI embedding model configuration
-|- retriever.py          # Qdrant hybrid retrieval + RRF + Cohere rerank
-|- router.py             # Corpus-grounded query engine assembly
-|- synthesizer.py        # LlamaIndex ResponseSynthesizer + Haiku config
+|- api/
+|  |- __init__.py
+|  |- app.py              # FastAPI app, all API routes
+|  |- rag.py              # LlamaIndex query pipeline assembly
+|  |- embedder.py         # OpenAI embedding model configuration
+|  |- retriever.py        # Qdrant hybrid retrieval + RRF + Cohere rerank
+|  |- router.py           # Corpus-grounded query engine assembly
+|  `- synthesizer.py      # LlamaIndex ResponseSynthesizer + Haiku config
+|- corpus/
+|  |- __init__.py
+|  |- fetch_corpus.py     # Snapshot public datasets into local raw corpus storage
+|  |- convert_sources.py  # Convert raw source formats into canonical JSONL records
+|  |- audit_corpus.py     # Analyze canonical corpus quality without modifying source data
+|  |- normalize_corpus.py # Deterministically normalize prompts from canonical source records
+|  |- corpus_sampling.py  # Shared deterministic corpus sampling utilities
+|  |- discover_taxonomy.py # Derive candidate attack families from normalized corpus data
+|  |- classify_corpus.py  # Apply the approved taxonomy across the finalized corpus
+|  `- ingest.py           # Embed the classified corpus into Qdrant
 |- data/
 |  `- corpus/
-|     |- raw/            # Immutable source dataset snapshots
-|     |- canonical/      # Canonical JSONL records with preserved provenance
+|     |- raw/             # Immutable source dataset snapshots
+|     |- canonical/       # Canonical JSONL records with preserved provenance
 |     |- audit_report.json
 |     |- normalized.jsonl
 |     |- proposed_taxonomy.json
-|     |- classified.jsonl
-|     `- classified_clean.jsonl
-|- frontend/             # Static frontend assets
-|  |- index.html         # Landing page with disclaimer gate
-|  |- search.html        # Main search interface
+|     `- classified.jsonl
+|- docs/
+|  |- ARCHITECTURE.md
+|  |- CONTEXT.md
+|  |- DESIGN.md
+|  `- PROGRESS.md
+|- frontend/
+|  |- index.html
+|  |- search.html
 |  |- css/
 |  |  `- style.css
 |  `- js/
-|     |- config.js       # API base URL configuration
+|     |- config.js
 |     `- app.js
-|- docs/
-|  |- ARCHITECTURE.md
-|  `- CONTEXT.md
 |- requirements.txt
+|- .env.example
+|- .gitignore
 |- AGENTS.md
-|- DESIGN.md
-|- PROGRESS.md
 `- README.md
 ```
 
 ## Coding Conventions
 - PEP8, snake_case, type hints on all functions
-- One file per concern - never mix retrieval logic into `app.py`
+- One file per concern; never mix retrieval logic into `api/app.py`
 - async/await throughout all FastAPI routes
 - External API calls should use structured error logging
-- Never hardcode API keys - Doppler only
+- Never hardcode API keys; Doppler only
 - Never populate `.env` with real keys
 - Local dev: run commands via `doppler run -- [command]`
 - Production: Doppler injects secrets at process start
-- LlamaIndex components configured in their own modules,
-  assembled in `rag.py`
+- LlamaIndex components configured in their own modules and assembled
+  in `api/rag.py`
 - Comments explain WHY a decision was made, not what the code does
 - All Tailwind used via CDN, no build step, no `node_modules`
 
 ## Pipeline Stages
 Read before touching any retrieval file:
-1. Query arrives at `POST /api/query` in `app.py`
-2. `router.py` builds a single `RetrieverQueryEngine`
-3. `retriever.py` runs hybrid search via `QueryFusionRetriever`
-4. `retriever.py` applies `CohereRerank`
-5. `synthesizer.py` passes top nodes + query to Claude Haiku
-6. `app.py` assembles and returns the response object
+1. Query arrives at `POST /api/query` in `api/app.py`
+2. `api/router.py` builds a single `RetrieverQueryEngine`
+3. `api/retriever.py` runs hybrid search via `QueryFusionRetriever`
+4. `api/retriever.py` applies `CohereRerank`
+5. `api/synthesizer.py` passes top nodes + query to Claude Haiku
+6. `api/app.py` assembles and returns the response object
 
 Current corpus pipeline:
-1. `fetch_corpus.py` snapshots public datasets into `data/corpus/raw/`
-2. `convert_sources.py` converts supported raw source files into `data/corpus/canonical/`
-3. `audit_corpus.py` detects quality issues without changing the canonical corpus
-4. `normalize_corpus.py` produces deterministic normalized prompt records
-5. `discover_taxonomy.py` proposes natural prompt families from the corpus itself
+1. `python -m corpus.fetch_corpus` snapshots public datasets into `data/corpus/raw/`
+2. `python -m corpus.convert_sources` converts supported raw source files into `data/corpus/canonical/`
+3. `python -m corpus.audit_corpus` detects quality issues without changing the canonical corpus
+4. `python -m corpus.normalize_corpus` produces deterministic normalized prompt records
+5. `python -m corpus.discover_taxonomy` proposes natural prompt families from the corpus itself
 6. Human review approves the taxonomy proposal
-7. `classify_corpus.py` applies the approved taxonomy across the corpus
-8. `strip_subtechniques.py` removes `classification.subtechnique` and writes `classified_clean.jsonl`
-9. `ingest.py` embeds only the finalized `classified_clean.jsonl` corpus into Qdrant
+7. `python -m corpus.classify_corpus` applies the approved taxonomy across the corpus
+8. `python -m corpus.ingest` embeds only the finalized `classified.jsonl` corpus into Qdrant
 
 Each corpus-stage script has exactly one responsibility:
-- `fetch_corpus.py`: acquisition and local snapshotting only
-- `convert_sources.py`: structural source conversion only
-- `audit_corpus.py`: quality analysis only
-- `normalize_corpus.py`: deterministic normalization only
-- `discover_taxonomy.py`: taxonomy discovery only
-- `classify_corpus.py`: taxonomy application only
-- `strip_subtechniques.py`: post-classification cleanup only
-- `ingest.py`: embedding and Qdrant writes only
+- `corpus.fetch_corpus`: acquisition and local snapshotting only
+- `corpus.convert_sources`: structural source conversion only
+- `corpus.audit_corpus`: quality analysis only
+- `corpus.normalize_corpus`: deterministic normalization only
+- `corpus.discover_taxonomy`: taxonomy discovery only
+- `corpus.classify_corpus`: taxonomy application only
+- `corpus.ingest`: embedding and Qdrant writes only
 
 ## Corpus Principles
 - Raw datasets remain untouched after snapshotting
@@ -136,50 +138,50 @@ Each corpus-stage script has exactly one responsibility:
 - Ingestion consumes only finalized classified corpus artifacts
 
 ## Before Starting Any Task
-- Task touches retrieval or pipeline -> read `ARCHITECTURE.md` first
-- Task touches UI or layout -> read `DESIGN.md` first
-- Task touches prompts or answer synthesis -> read `CONTEXT.md` first
+- Task touches retrieval or pipeline -> read `docs/ARCHITECTURE.md` first
+- Task touches UI or layout -> read `docs/DESIGN.md` first
+- Task touches prompts or answer synthesis -> read `docs/CONTEXT.md` first
 - Never assume current state -> always read the relevant file first
 
 ## Never Do These Without Asking First
 - Change the Qdrant collection schema (requires full re-ingestion)
 - Change the embedding model (invalidates stored vectors)
-- Run `ingest.py` against production without a backup plan
+- Run `python -m corpus.ingest` against production without a backup plan
 - Add new pip dependencies without updating `requirements.txt`
 - Modify raw corpus snapshots in `data/corpus/raw/`
 
 ## Common Task Patterns
 
 ### Adding a new dataset source
-1. Extend `fetch_corpus.py` to snapshot the new source into raw corpus storage
-2. Re-run `convert_sources.py` to refresh the canonical corpus
-3. Re-run corpus audit and normalization
-4. Re-run taxonomy discovery and classification if the new source changes the corpus mix
-5. Re-run `ingest.py` after the finalized classified corpus is ready
-6. Update corpus notes in `ARCHITECTURE.md`
+1. Extend `corpus/fetch_corpus.py` to snapshot the new source into raw corpus storage
+2. Re-run `python -m corpus.convert_sources` to refresh the canonical corpus
+3. Re-run `python -m corpus.audit_corpus` and `python -m corpus.normalize_corpus`
+4. Re-run `python -m corpus.discover_taxonomy` and `python -m corpus.classify_corpus` if the new source changes the corpus mix
+5. Re-run `python -m corpus.ingest` after the finalized classified corpus is ready
+6. Update corpus notes in `docs/ARCHITECTURE.md`
 
 ### Changing corpus preparation behavior
-1. Read `ARCHITECTURE.md` corpus section first
+1. Read `docs/ARCHITECTURE.md` corpus section first
 2. Keep the change isolated to the responsible stage script
 3. Preserve the one-responsibility rule for each stage
-4. Document the change in `PROGRESS.md`
+4. Document the change in `docs/PROGRESS.md`
 
 ### Changing retrieval behavior
-1. Read `ARCHITECTURE.md` retrieval section first
-2. Make the change in the retrieval modules
+1. Read `docs/ARCHITECTURE.md` retrieval section first
+2. Make the change in the retrieval modules under `api/`
 3. Verify behavior against representative queries
-4. Document the change in `PROGRESS.md`
+4. Document the change in `docs/PROGRESS.md`
 
 ### Adding a new API endpoint
-1. Add route to `app.py`
-2. Put business logic in its own module, never in `app.py`
-3. Add request/response schema to `ARCHITECTURE.md`
+1. Add route to `api/app.py`
+2. Put business logic in its own module, never in `api/app.py`
+3. Add request/response schema to `docs/ARCHITECTURE.md`
 
 ### Debugging corpus quality issues
 1. Inspect the affected raw snapshot in `data/corpus/raw/`
 2. Inspect the converted canonical file in `data/corpus/canonical/`
-3. Check `audit_report.json` for corpus-wide patterns
-4. Inspect `normalize_corpus.py` for deterministic cleanup rules
+3. Check `data/corpus/audit_report.json` for corpus-wide patterns
+4. Inspect `corpus/normalize_corpus.py` for deterministic cleanup rules
 5. Confirm whether the issue belongs to conversion, normalization, taxonomy, or ingestion
 
 ### Debugging bad retrieval results
@@ -207,59 +209,29 @@ Do not wait for explicit wrap up or end session instructions.
 
 After every session:
 1. Update AGENTS.md current state section (keep under 150 lines)
-2. Add a dated entry to PROGRESS.md (what changed and why)
-3. Update DESIGN.md if any UI changes were made
-4. Update docs/ARCHITECTURE.md if any pipeline changes were made
-5. Update docs/CONTEXT.md if prompt or synthesis rules changed
-6. Never append session notes to README.md
-7. Run git add . && git commit -m "[type]: description" && git push
+2. Add a dated entry to `docs/PROGRESS.md` (what changed and why)
+3. Update `docs/DESIGN.md` if any UI changes were made
+4. Update `docs/ARCHITECTURE.md` if any pipeline changes were made
+5. Update `docs/CONTEXT.md` if prompt or synthesis rules changed
+6. Never append session notes to `README.md`
+7. Run `git add . && git commit -m "[type]: description" && git push`
 
 ## Current Project State
 Phase 1 - In Development
-- Backend query pipeline is implemented
+- Backend query pipeline is implemented under `api/`
 - All user queries are corpus-grounded through the same retrieval path;
   there is no direct conceptual LLM-only route
 - Full prompt inspection is lazy-loaded through a dedicated backend
   endpoint; search results stay excerpt-based
 - Corpus architecture is organized around a staged local workflow:
   fetch, convert, audit, normalize, discover taxonomy, classify, ingest
-- `fetch_corpus.py` is implemented as an acquisition-only raw snapshot
-  stage with a multi-platform source registry, per-source metadata,
-  isolated source-failure reporting, and gated canonical replacement
-- `convert_sources.py` is implemented as a structural conversion stage
-  that preserves all source fields and provenance in canonical JSONL
-- `audit_corpus.py` is implemented as a read-only canonical corpus
-  quality analysis stage that writes `data/corpus/audit_report.json`
-- `normalize_corpus.py` is implemented as a deterministic provenance-
-  preserving cleanup stage over canonical JSONL that writes
-  `data/corpus/normalized.jsonl`
-- Corpus scope is explicitly limited to adversarial jailbreak prompts;
-  pure harmful requests without a jailbreak mechanism are excluded from
-  future corpus rebuilds
-- `discover_taxonomy.py` is implemented as an LLM-assisted,
-  source-aware, stratified iterative stage with schema-backed
-  structured outputs, minimum-plus-proportional sample allocation, and
-  a constrained hierarchical taxonomy proposal that writes to
-  `data/corpus/proposed_taxonomy.json`
-- `corpus_sampling.py` centralizes the deterministic source-aware
-  stratified sampling logic shared by taxonomy discovery and
-  classification experiments without becoming its own pipeline stage
-- `classify_corpus.py` is implemented as a corpus-wide taxonomy
-  application stage that reads `normalized.jsonl` plus
-  `proposed_taxonomy.json`, uses schema-backed Anthropic structured
-  outputs with dominant-primary classification rules, writes
-  `data/corpus/classified.jsonl`, and supports resume-safe
-  checkpointing, incremental staging, retry logging, controlled
-  fallback to `Unclear / Needs Review`, and cached stratified
-  experiment sampling via `--sample-size`
-- `strip_subtechniques.py` is implemented as a post-classification
-  cleanup stage that preserves `data/corpus/classified.jsonl` as the
-  original archive, removes `classification.subtechnique` from every
-  record, and writes `data/corpus/classified_clean.jsonl` via staging
-- `ingest.py` now directly consumes finalized
-  `data/corpus/classified_clean.jsonl` artifacts for embedding into
-  Qdrant with resume-safe checkpointing and no longer depends on legacy
-  inline dataset loading or legacy pre-taxonomy classification helpers
-- Prompt text lives in the `TextNode` body; metadata stores only
-  `source`, `technique`, and `prompt_id`
+- `corpus/fetch_corpus.py` is implemented as an acquisition-only raw snapshot stage
+- `corpus/convert_sources.py` is implemented as a structural conversion stage
+- `corpus/audit_corpus.py` is implemented as a read-only canonical corpus quality analysis stage
+- `corpus/normalize_corpus.py` is implemented as a deterministic provenance-preserving cleanup stage
+- `corpus/discover_taxonomy.py` is implemented as an LLM-assisted, source-aware, stratified iterative taxonomy proposal stage
+- `corpus/corpus_sampling.py` centralizes the deterministic source-aware stratified sampling logic shared by discovery and experiments
+- `corpus/classify_corpus.py` is implemented as a corpus-wide taxonomy application stage that writes `data/corpus/classified.jsonl`
+- `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
+- Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`

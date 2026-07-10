@@ -9,7 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CORPUS_ROOT = Path("data") / "corpus"
-CLASSIFIED_CLEAN_PATH = CORPUS_ROOT / "classified_clean.jsonl"
+CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
 COLLECTION_NAME = "redlib"
 UPSERT_BATCH_SIZE = 20
@@ -111,7 +111,7 @@ def count_classified_records() -> int:
     ensure_classified_corpus_exists()
 
     count = 0
-    with CLASSIFIED_CLEAN_PATH.open("r", encoding="utf-8") as classified_file:
+    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
         for line in classified_file:
             if line.strip():
                 count += 1
@@ -122,11 +122,11 @@ def count_classified_records() -> int:
 
 
 def ensure_classified_corpus_exists() -> None:
-    if CLASSIFIED_CLEAN_PATH.exists():
+    if CLASSIFIED_PATH.exists():
         return
     raise SystemExit(
-        "Clean classified corpus not found at data/corpus/classified_clean.jsonl. "
-        "Run strip_subtechniques.py after classify_corpus.py and before ingest.py."
+        "Classified corpus not found at data/corpus/classified.jsonl. "
+        "Run python -m corpus.classify_corpus before python -m corpus.ingest."
     )
 
 
@@ -188,7 +188,7 @@ def iter_classified_records(*, start_index: int = 0) -> Any:
     ensure_classified_corpus_exists()
 
     emitted = 0
-    with CLASSIFIED_CLEAN_PATH.open("r", encoding="utf-8") as classified_file:
+    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
         for line_number, line in enumerate(classified_file, start=1):
             stripped_line = line.strip()
             if not stripped_line:
@@ -249,7 +249,7 @@ def prepare_run_state(
     if checkpoint is None:
         return {
             "run_started_at": now_utc_iso(),
-            "classified_path": str(CLASSIFIED_CLEAN_PATH),
+            "classified_path": str(CLASSIFIED_PATH),
             "classified_sha256": classified_sha256,
             "total_records": total_records,
             "processed_records": 0,
@@ -260,7 +260,7 @@ def prepare_run_state(
     if checkpoint.get("classified_sha256") != classified_sha256:
         raise SystemExit(
             "Existing ingestion checkpoint does not match the current "
-            "classified_clean.jsonl. Delete data/corpus/ingest_checkpoint.json "
+            "classified.jsonl. Delete data/corpus/ingest_checkpoint.json "
             "to start a fresh ingestion run."
         )
 
@@ -285,14 +285,14 @@ def build_node(record: dict[str, Any]) -> Any:
 
 
 def run_ingestion() -> None:
-    from embedder import get_embed_model
+    from api.embedder import get_embed_model
     from llama_index.core import StorageContext, VectorStoreIndex
     from llama_index.vector_stores.qdrant import QdrantVectorStore
 
     ensure_classified_corpus_exists()
 
     total_records = count_classified_records()
-    classified_sha256 = compute_file_sha256(CLASSIFIED_CLEAN_PATH)
+    classified_sha256 = compute_file_sha256(CLASSIFIED_PATH)
     checkpoint = prepare_run_state(
         total_records=total_records,
         classified_sha256=classified_sha256,
@@ -304,11 +304,11 @@ def run_ingestion() -> None:
     if processed_records > total_records:
         raise SystemExit(
             "Ingestion checkpoint processed_records exceeds the number of "
-            "cleaned classified records."
+            "classified records."
         )
 
     logger.info(
-        "Starting ingestion over %s cleaned classified records; resuming at record %s",
+        "Starting ingestion over %s classified records; resuming at record %s",
         total_records,
         processed_records,
     )
@@ -344,7 +344,7 @@ def run_ingestion() -> None:
         checkpoint["last_updated_at"] = now_utc_iso()
         save_checkpoint(checkpoint)
         logger.info(
-            "Ingested %s/%s cleaned classified records",
+            "Ingested %s/%s classified records",
             processed_records,
             total_records,
         )
@@ -357,7 +357,7 @@ def run_ingestion() -> None:
         checkpoint["last_updated_at"] = now_utc_iso()
         save_checkpoint(checkpoint)
         logger.info(
-            "Ingested %s/%s cleaned classified records",
+            "Ingested %s/%s classified records",
             processed_records,
             total_records,
         )
@@ -372,7 +372,7 @@ def run_ingestion() -> None:
     save_checkpoint(checkpoint)
     remove_checkpoint_if_exists()
     logger.info(
-        "Ingestion complete. Embedded %s cleaned classified records into %s.",
+        "Ingestion complete. Embedded %s classified records into %s.",
         total_records,
         COLLECTION_NAME,
     )

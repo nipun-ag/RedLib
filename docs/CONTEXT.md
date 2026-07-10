@@ -2,23 +2,23 @@
 
 ## Purpose of This File
 This file documents how RedLib currently synthesizes answers after
-retrieval. Read this before modifying `synthesizer.py`, `router.py`, or
-the synthesis prompt used by the query pipeline.
+retrieval. Read this before modifying `api/synthesizer.py`,
+`api/router.py`, or the synthesis prompt used by the query pipeline.
 
 ---
 
 ## Current Synthesis Flow
 RedLib uses one shared synthesis prompt for one corpus-grounded query path:
 
-1. `router.py` builds a single `RetrieverQueryEngine` for all user
+1. `api/router.py` builds a single `RetrieverQueryEngine` for all user
    queries.
-2. `rag.py` initializes:
+2. `api/rag.py` initializes:
    - OpenAI embeddings via `text-embedding-3-small`
    - hybrid retrieval via `QueryFusionRetriever`
    - reranking via `CohereRerank`
    - synthesis via `get_response_synthesizer(response_mode="compact")`
    - a single corpus-backed query engine with no direct non-retrieval path
-3. `synthesizer.py` uses Anthropic model `claude-haiku-4-5` with a
+3. `api/synthesizer.py` uses Anthropic model `claude-haiku-4-5` with a
    single `SYSTEM_PROMPT`.
 4. For both example-seeking and conceptual questions, the synthesizer
    receives reranked retrieved prompt nodes and produces a short
@@ -58,7 +58,7 @@ corpus and should not be described as if they define RedLib's taxonomy.
 ---
 
 ## Tone and Style Rules
-These rules are implemented directly in `synthesizer.py`:
+These rules are implemented directly in `api/synthesizer.py`:
 
 - Analytical and precise, not conversational
 - Present tense when describing techniques and patterns

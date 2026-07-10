@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
-from corpus_sampling import (
+from .corpus_sampling import (
     NormalizedRecord,
     allocate_source_samples,
     build_stratum_key,

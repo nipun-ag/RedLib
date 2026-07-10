@@ -22,7 +22,7 @@ from qdrant_client.http.models import (
     MatchValue,
     PayloadSchemaType,
 )
-from rag import initialize_pipeline
+from .rag import initialize_pipeline
 
 logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"

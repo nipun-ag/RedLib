@@ -1,6 +1,51 @@
 # RedLib — Progress Log
 
 ## 2026-07-10
+Restructured the repository into explicit `api/`, `corpus/`, and
+`docs/` folders so the import graph and contributor workflow match the
+actual system boundaries.
+
+Change:
+- Moved the FastAPI and query-pipeline modules into `api/`:
+  `app.py`, `rag.py`, `embedder.py`, `retriever.py`, `router.py`, and
+  `synthesizer.py`.
+- Moved the corpus-build and ingestion stages into `corpus/`:
+  `fetch_corpus.py`, `convert_sources.py`, `audit_corpus.py`,
+  `normalize_corpus.py`, `corpus_sampling.py`,
+  `discover_taxonomy.py`, `classify_corpus.py`, and `ingest.py`.
+- Moved `DESIGN.md` and `PROGRESS.md` under `docs/`.
+- Added `api/__init__.py` and `corpus/__init__.py` so both folders are
+  importable packages.
+- Updated intra-package imports to use package-relative paths inside
+  `api/` and `corpus/`, and updated cross-package ingestion imports to
+  use `api.embedder`.
+- Deleted the stale one-time utility scripts
+  `strip_subtechniques.py` and `update_checkpoint_taxonomy.py`.
+- Returned ingestion to the durable `data/corpus/classified.jsonl`
+  artifact, since the removed cleanup utility is no longer part of the
+  operational pipeline.
+
+Why this was needed:
+- The previous flat root layout made the repository harder to navigate
+  and hid the real split between API code and corpus-pipeline code.
+- Package folders make imports explicit, reduce accidental path drift,
+  and give future contributors a cleaner mental model of the system.
+- Removing one-off utility scripts keeps the production workflow
+  focused on the maintained stages only.
+
+Verification:
+- Folder structure check for `api/`, `corpus/`, and `docs/`
+- Root cleanup check for removed and moved files
+- `import api.embedder`, `api.retriever`, `api.synthesizer`,
+  `api.router`
+- `import corpus.corpus_sampling`, `corpus.classify_corpus`
+- `python -m py_compile` across all Python files in `api/` and `corpus/`
+- Confirmed `README.md` now documents
+  `uvicorn api.app:app --reload --port 8000`
+
+---
+
+## 2026-07-10
 Added a dedicated post-classification cleanup step so ingestion no
 longer depends on partial subtechnique coverage in the classified
 archive.

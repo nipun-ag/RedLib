@@ -1,11 +1,11 @@
 import os
 import logging
-from llama_index.embeddings.openai import OpenAIEmbedding
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def get_embed_model() -> OpenAIEmbedding:
+def get_embed_model() -> Any:
     """Configure and return OpenAI embedding model.
 
     Raises:
@@ -20,6 +20,14 @@ def get_embed_model() -> OpenAIEmbedding:
         error_msg = "OPENAI_API_KEY environment variable not set"
         logger.error(error_msg)
         raise ValueError(error_msg)
+
+    try:
+        from llama_index.embeddings.openai import OpenAIEmbedding
+    except ImportError as error:
+        raise ImportError(
+            "llama_index is required to configure embeddings. "
+            "Install project dependencies before running the API or ingestion pipeline."
+        ) from error
 
     embed_model = OpenAIEmbedding(
         model="text-embedding-3-small",

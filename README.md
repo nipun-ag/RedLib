@@ -2,9 +2,9 @@
 
 RedLib is a retrieval-augmented research tool for AI safety
 practitioners and red teamers working with real adversarial jailbreak
-prompts. It combines a local corpus pipeline with Qdrant-backed
-retrieval so contributors can search, inspect, and synthesize patterns
-across a curated jailbreak corpus.
+prompts. It combines a staged local corpus pipeline with a
+Qdrant-backed query API so contributors can search, inspect, and
+synthesize patterns across a curated jailbreak corpus.
 
 ---
 
@@ -25,16 +25,18 @@ bypass LLM safety behavior are out of scope.
 
 RedLib has two high-level systems:
 
-- A staged corpus pipeline that snapshots public datasets locally,
-  audits quality, normalizes prompts deterministically, discovers a
-  taxonomy from the corpus itself, applies a human-approved taxonomy
-  consistently, and only then hands the finalized corpus to ingestion.
-- A query pipeline that retrieves relevant prompts from Qdrant, reranks
-  them, and produces a short grounded synthesis for the user.
+- A staged corpus pipeline in `corpus/` that snapshots public datasets
+  locally, audits quality, normalizes prompts deterministically,
+  discovers a taxonomy from the corpus itself, applies a
+  human-approved taxonomy consistently, and then hands the finalized
+  corpus to ingestion.
+- A query pipeline in `api/` that retrieves relevant prompts from
+  Qdrant, reranks them, and produces a short grounded synthesis for
+  the user.
 
 The frontend lives in `frontend/` as static HTML, CSS, and JavaScript.
-The backend API lives in `app.py`. Detailed implementation notes belong
-in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
+The backend API lives in `api/app.py`. Detailed implementation notes
+belong in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
 
 ---
 
@@ -42,40 +44,41 @@ in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
 
 At a high level, the corpus pipeline is:
 
-1. `fetch_corpus.py` snapshots public datasets into local raw corpus
-   storage under `data/corpus/raw/`.
-2. `convert_sources.py` converts supported raw source files into a
-   canonical JSONL corpus under `data/corpus/canonical/` without
-   changing their meaning or deciding which field is the prompt.
-3. `audit_corpus.py` evaluates canonical corpus quality without
-   modifying the preserved source data.
-4. `normalize_corpus.py` produces a deterministic, ingestion-ready
-   normalized corpus from the canonical JSONL records.
-5. `discover_taxonomy.py` derives candidate prompt families from the
-   normalized data.
+1. `python -m corpus.fetch_corpus` snapshots public datasets into local
+   raw corpus storage under `data/corpus/raw/`.
+2. `python -m corpus.convert_sources` converts supported raw source
+   files into a canonical JSONL corpus under `data/corpus/canonical/`
+   without changing their meaning or deciding which field is the
+   prompt.
+3. `python -m corpus.audit_corpus` evaluates canonical corpus quality
+   without modifying the preserved source data.
+4. `python -m corpus.normalize_corpus` produces a deterministic,
+   ingestion-ready normalized corpus from the canonical JSONL records.
+5. `python -m corpus.discover_taxonomy` derives candidate prompt
+   families from the normalized data.
 6. Human review approves the taxonomy proposal.
-7. `classify_corpus.py` applies the approved taxonomy across the full
-   corpus.
-8. `ingest.py` embeds only the finalized classified corpus and writes it
-   to Qdrant.
+7. `python -m corpus.classify_corpus` applies the approved taxonomy
+   across the full corpus.
+8. `python -m corpus.ingest` embeds the finalized classified corpus and
+   writes it to Qdrant.
 
 This design keeps raw source data untouched, makes the corpus
-reproducible on each build, and separates data cleaning, taxonomy design, and vector
-ingestion into distinct responsibilities.
+reproducible on each build, and separates data cleaning, taxonomy
+design, and vector ingestion into distinct responsibilities.
 
 ---
 
 ## Current Stack
 
-| Layer         | Technology                         |
-|---------------|------------------------------------|
-| Frontend      | Vanilla JS, HTML, CSS (Tailwind)   |
-| Backend       | FastAPI                            |
-| RAG Framework | LlamaIndex                         |
-| Vector Store  | Qdrant Cloud                       |
-| Embeddings    | OpenAI `text-embedding-3-small`    |
-| Reranking     | Cohere Rerank API                  |
-| Synthesis     | Anthropic Claude Haiku 4.5         |
+| Layer         | Technology                           |
+|---------------|--------------------------------------|
+| Frontend      | Vanilla JS, HTML, CSS (Tailwind)     |
+| Backend       | FastAPI                              |
+| RAG Framework | LlamaIndex                           |
+| Vector Store  | Qdrant Cloud                         |
+| Embeddings    | OpenAI `text-embedding-3-small`      |
+| Reranking     | Cohere Rerank API                    |
+| Synthesis     | Anthropic Claude Haiku 4.5           |
 | Corpus Input  | Public datasets, locally snapshotted |
 
 ---
@@ -118,7 +121,7 @@ doppler setup
 Start the backend API:
 
 ```bash
-doppler run -- uvicorn app:app --reload --port 8000
+doppler run -- uvicorn api.app:app --reload --port 8000
 ```
 
 Serve the frontend from the `frontend/` directory in a second terminal:
@@ -139,18 +142,23 @@ for API requests.
 
 ## Repository Guide
 
-- `fetch_corpus.py`: snapshot public datasets into local raw corpus storage
-- `convert_sources.py`: convert raw JSONL and CSV source files into canonical JSONL records with provenance
-- `audit_corpus.py`: analyze canonical corpus quality without modifying source data
-- `normalize_corpus.py`: deterministically normalize prompts from canonical source records into a stable corpus format
-- `corpus_sampling.py`: shared deterministic source-aware stratified sampling used by `discover_taxonomy.py` and `classify_corpus.py`
-- `discover_taxonomy.py`: derive candidate attack families from the normalized corpus
-- `classify_corpus.py`: apply the approved taxonomy across the corpus
-- `ingest.py`: embed the finalized classified corpus into Qdrant
-- `app.py`: FastAPI routes
-- `rag.py`: query-pipeline assembly
-- `retriever.py`: hybrid retrieval and reranking
-- `synthesizer.py`: answer synthesis
+- `api/`: backend query pipeline and FastAPI entrypoint
+- `api/app.py`: FastAPI routes and lightweight Qdrant lookups
+- `api/rag.py`: query-pipeline assembly
+- `api/embedder.py`: OpenAI embedding model configuration
+- `api/retriever.py`: hybrid retrieval and reranking
+- `api/router.py`: corpus-grounded query engine assembly
+- `api/synthesizer.py`: answer synthesis
+- `corpus/`: staged corpus-build and ingestion pipeline
+- `corpus/fetch_corpus.py`: snapshot public datasets into local raw corpus storage
+- `corpus/convert_sources.py`: convert raw JSONL and CSV source files into canonical JSONL records with provenance
+- `corpus/audit_corpus.py`: analyze canonical corpus quality without modifying source data
+- `corpus/normalize_corpus.py`: deterministically normalize prompts from canonical source records into a stable corpus format
+- `corpus/corpus_sampling.py`: shared deterministic source-aware stratified sampling used by discovery and classification
+- `corpus/discover_taxonomy.py`: derive candidate attack families from the normalized corpus
+- `corpus/classify_corpus.py`: apply the approved taxonomy across the corpus
+- `corpus/ingest.py`: embed the finalized classified corpus into Qdrant
+- `docs/`: architecture, context, design notes, and progress log
 - `frontend/`: static UI
 
 For contributor workflow and repo-specific guardrails, see
