@@ -12,10 +12,13 @@ logger = logging.getLogger(__name__)
 CORPUS_ROOT = Path("data") / "corpus"
 CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
+INGEST_OVERSIZED_PATH = CORPUS_ROOT / "ingest_oversized.jsonl"
 COLLECTION_NAME = "redlib"
 UPSERT_BATCH_SIZE = 400
 RATE_LIMIT_RETRY_DELAY_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
+EMBEDDING_MODEL_NAME = "text-embedding-3-small"
+EMBEDDING_TOKEN_LIMIT = 8000
 
 
 def now_utc_iso() -> str:
@@ -211,6 +214,33 @@ def make_node_id(prompt_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, prompt_id))
 
 
+def get_embedding_tokenizer() -> Any:
+    import tiktoken
+
+    try:
+        return tiktoken.encoding_for_model(EMBEDDING_MODEL_NAME)
+    except KeyError:
+        return tiktoken.get_encoding("cl100k_base")
+
+
+def get_embedding_content_and_token_count(record: dict[str, Any], tokenizer: Any) -> tuple[Any, int]:
+    from llama_index.core.schema import MetadataMode
+
+    node = build_node(record)
+    embedding_content = node.get_content(metadata_mode=MetadataMode.EMBED)
+    token_count = len(tokenizer.encode(embedding_content))
+    return node, token_count
+
+
+def append_oversized_record(record: dict[str, Any], token_count: int) -> None:
+    payload = dict(record)
+    payload["token_count"] = token_count
+    INGEST_OVERSIZED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with INGEST_OVERSIZED_PATH.open("a", encoding="utf-8", newline="\n") as oversized_file:
+        oversized_file.write(json.dumps(payload, ensure_ascii=False))
+        oversized_file.write("\n")
+
+
 def get_ingest_vector_store() -> tuple[Any, Any]:
     from qdrant_client import QdrantClient
     from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -263,6 +293,11 @@ def filter_already_ingested_records(
     ]
     skipped_count = len(records) - len(records_to_insert)
     return records_to_insert, skipped_count
+
+
+def is_already_ingested(client: Any, record: dict[str, Any]) -> bool:
+    records_to_insert, skipped_count = filter_already_ingested_records(client, [record])
+    return skipped_count == 1 and not records_to_insert
 
 
 def ensure_collection_exists(client: Any) -> None:
@@ -360,6 +395,35 @@ def insert_batch_with_retries(index: Any, batch_nodes: list[Any], batch_number: 
             time.sleep(RATE_LIMIT_RETRY_DELAY_SECONDS)
 
 
+def flush_batch(
+    *,
+    index: Any,
+    batch_nodes: list[Any],
+    batch_records: list[dict[str, Any]],
+    batch_number: int,
+    processed_records: int,
+    total_records: int,
+) -> tuple[int, int]:
+    if not batch_nodes or not batch_records:
+        return batch_number, processed_records
+
+    next_batch_number = batch_number + 1
+    insert_batch_with_retries(index, batch_nodes, next_batch_number)
+    processed_records += len(batch_records)
+    last_prompt_id = batch_records[-1]["prompt_id"]
+    save_checkpoint(
+        last_ingested_prompt_id=last_prompt_id,
+        records_ingested=processed_records,
+        total_records=total_records,
+    )
+    progress_percent = (processed_records / total_records) * 100
+    print(
+        f"Ingested {processed_records}/{total_records} records "
+        f"({progress_percent:.1f}%) - batch {next_batch_number} complete"
+    )
+    return next_batch_number, processed_records
+
+
 def run_ingestion() -> None:
     from api.embedder import get_embed_model
 
@@ -382,6 +446,7 @@ def run_ingestion() -> None:
     )
 
     embed_model = get_embed_model()
+    tokenizer = get_embedding_tokenizer()
     vector_store, client = get_ingest_vector_store()
     ensure_collection_exists(client)
     ensure_keyword_payload_index(client, "prompt_id")
@@ -389,104 +454,94 @@ def run_ingestion() -> None:
     index = build_index(vector_store, embed_model)
 
     batch_records: list[dict[str, Any]] = []
-    last_prompt_id: str | None = None
+    batch_nodes: list[Any] = []
     total_batches = 0
+    quarantined_records = 0
     resume_mode = resume_prompt_id is not None
 
     for record in iter_classified_records(after_prompt_id=resume_prompt_id):
-        batch_records.append(record)
-        last_prompt_id = record["prompt_id"]
-
-        if len(batch_records) < UPSERT_BATCH_SIZE:
-            continue
-
-        records_to_insert = batch_records
-        skipped_records = 0
-        if resume_mode:
-            records_to_insert, skipped_records = filter_already_ingested_records(
-                client,
-                batch_records,
+        if resume_mode and is_already_ingested(client, record):
+            total_batches, records_ingested = flush_batch(
+                index=index,
+                batch_nodes=batch_nodes,
+                batch_records=batch_records,
+                batch_number=total_batches,
+                processed_records=records_ingested,
+                total_records=total_records,
             )
-            if skipped_records:
-                logger.warning(
-                    "Skipped %s already-ingested resumed records before batch %s upsert.",
-                    skipped_records,
-                    total_batches + 1,
-                )
-
-        if not records_to_insert:
-            if last_prompt_id is None:
-                raise SystemExit("Resume skip path reached a batch without a prompt_id.")
-            records_ingested += skipped_records
+            batch_nodes = []
+            batch_records = []
+            records_ingested += 1
+            logger.warning(
+                "Skipped already-ingested resumed record prompt_id=%s source=%s",
+                record["prompt_id"],
+                record["source"],
+            )
             save_checkpoint(
-                last_ingested_prompt_id=last_prompt_id,
+                last_ingested_prompt_id=record["prompt_id"],
                 records_ingested=records_ingested,
                 total_records=total_records,
             )
-            batch_records = []
             continue
 
-        batch_nodes = [build_node(batch_record) for batch_record in records_to_insert]
-        total_batches += 1
-        insert_batch_with_retries(index, batch_nodes, total_batches)
-        records_ingested += len(batch_records)
-        save_checkpoint(
-            last_ingested_prompt_id=last_prompt_id,
-            records_ingested=records_ingested,
+        node, token_count = get_embedding_content_and_token_count(record, tokenizer)
+        if token_count > EMBEDDING_TOKEN_LIMIT:
+            total_batches, records_ingested = flush_batch(
+                index=index,
+                batch_nodes=batch_nodes,
+                batch_records=batch_records,
+                batch_number=total_batches,
+                processed_records=records_ingested,
+                total_records=total_records,
+            )
+            batch_nodes = []
+            batch_records = []
+            append_oversized_record(record, token_count)
+            quarantined_records += 1
+            records_ingested += 1
+            logger.warning(
+                "Quarantined oversized record prompt_id=%s source=%s token_count=%s",
+                record["prompt_id"],
+                record["source"],
+                token_count,
+            )
+            save_checkpoint(
+                last_ingested_prompt_id=record["prompt_id"],
+                records_ingested=records_ingested,
+                total_records=total_records,
+            )
+            continue
+
+        batch_records.append(record)
+        batch_nodes.append(node)
+
+        if len(batch_nodes) < UPSERT_BATCH_SIZE:
+            continue
+
+        total_batches, records_ingested = flush_batch(
+            index=index,
+            batch_nodes=batch_nodes,
+            batch_records=batch_records,
+            batch_number=total_batches,
+            processed_records=records_ingested,
             total_records=total_records,
         )
-        progress_percent = (records_ingested / total_records) * 100
-        print(
-            f"Ingested {records_ingested}/{total_records} records "
-            f"({progress_percent:.1f}%) - batch {total_batches} complete"
-        )
+        batch_nodes = []
         batch_records = []
 
-    if batch_records:
-        records_to_insert = batch_records
-        skipped_records = 0
-        if resume_mode:
-            records_to_insert, skipped_records = filter_already_ingested_records(
-                client,
-                batch_records,
-            )
-            if skipped_records:
-                logger.warning(
-                    "Skipped %s already-ingested resumed records before final batch upsert.",
-                    skipped_records,
-                )
-
-        total_batches += 1
-        if not records_to_insert:
-            if last_prompt_id is None:
-                raise SystemExit("Resume skip path reached a final batch without a prompt_id.")
-            records_ingested += skipped_records
-            save_checkpoint(
-                last_ingested_prompt_id=last_prompt_id,
-                records_ingested=records_ingested,
-                total_records=total_records,
-            )
-            total_batches -= 1
-        else:
-            batch_nodes = [build_node(batch_record) for batch_record in records_to_insert]
-            insert_batch_with_retries(index, batch_nodes, total_batches)
-            records_ingested += len(batch_records)
-            if last_prompt_id is None:
-                raise SystemExit("Ingestion completed a final batch without a prompt_id.")
-            save_checkpoint(
-                last_ingested_prompt_id=last_prompt_id,
-                records_ingested=records_ingested,
-                total_records=total_records,
-            )
-            progress_percent = (records_ingested / total_records) * 100
-            print(
-                f"Ingested {records_ingested}/{total_records} records "
-                f"({progress_percent:.1f}%) - batch {total_batches} complete"
-            )
+    total_batches, records_ingested = flush_batch(
+        index=index,
+        batch_nodes=batch_nodes,
+        batch_records=batch_records,
+        batch_number=total_batches,
+        processed_records=records_ingested,
+        total_records=total_records,
+    )
 
     runtime_seconds = time.perf_counter() - started_at
     print(f"Total records ingested: {records_ingested}")
     print(f"Total batches: {total_batches}")
+    print(f"Quarantined oversized records: {quarantined_records}")
     print(f"Runtime: {runtime_seconds:.2f} seconds")
     print(f"Collection: {COLLECTION_NAME}")
 

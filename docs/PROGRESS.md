@@ -1,6 +1,55 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-10
+Added an embedding token-length guard to `corpus/ingest.py` so oversized
+records are quarantined instead of crashing ingestion.
+
+Issue:
+- This is a recurrence of the token-length ingestion failure first
+  addressed on 2026-06-26, when we learned the guard must measure the
+  exact content sent to the embedding API rather than the raw
+  classified-record text field.
+- That constraint was lost during the 2026-07-10 ingestion rewrite, so
+  oversized prompts could once again make the embedding step fail late
+  in the run.
+
+Change:
+- Added a token-count check in `corpus/ingest.py` using `tiktoken`
+  against the exact `TextNode` embed-content path
+  (`node.get_content(metadata_mode=MetadataMode.EMBED)`).
+- Set an ingestion safety limit of 8000 tokens per record, leaving
+  headroom under the model hard limit.
+- Added append-only quarantine output at
+  `data/corpus/ingest_oversized.jsonl`, storing the full classified
+  record plus a `token_count` field for each oversized record.
+- Logged each quarantined record with `prompt_id`, `source`, and
+  `token_count`.
+- Updated checkpoint advancement so oversized records count as
+  processed for resume purposes and do not repeatedly retry on resumed
+  ingestion runs.
+- Kept normal-length record behavior unchanged: the existing batch
+  insert path, retry logic, and 429 handling still apply to records
+  that pass the token guard.
+- Documented the 8000-token ingestion constraint and quarantine file in
+  `docs/ARCHITECTURE.md` so the limit does not silently disappear a
+  third time.
+
+Why this was needed:
+- Embedding failures from oversized prompts should be isolated and
+  reviewable, not able to crash a long-running ingestion job.
+- The architecture now records the constraint explicitly so future
+  ingestion refactors have to account for it instead of accidentally
+  dropping it again.
+
+Verification:
+- `python -m py_compile corpus/ingest.py`
+- Existing normal record batching and retry paths remain in place
+- Oversized records are now quarantined and checkpointed as processed
+  instead of entering the embedding batch
+
+---
+
+## 2026-07-10
 Rewrote `corpus/ingest.py` into a production-grade, LlamaIndex-native
 ingestion path that matches the live query pipeline's expectations.
 

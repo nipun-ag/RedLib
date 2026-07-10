@@ -210,6 +210,11 @@ Classified record shape:
 - Stores `last_ingested_prompt_id`, `records_ingested`, `total_records`, and `timestamp`
 - Used to resume ingestion from the next classified record after interruption
 
+### `ingest_oversized.jsonl`
+- Append-only quarantine file written by `python -m corpus.ingest`
+- Stores the full classified record plus a `token_count` field for any record whose embedding content exceeds the ingestion safety limit
+- Oversized records are logged and checkpointed as processed so they do not repeatedly retry on resume runs
+
 ### `classification_failures.jsonl`
 - Per-batch failure log written during `python -m corpus.classify_corpus` runs
 
@@ -425,3 +430,4 @@ Deployment is split:
 - Taxonomy discovery and taxonomy application must stay separate stages.
 - Ingestion consumes only finalized classified corpus artifacts.
 - Prompt text is stored in the `TextNode` body, not in metadata.
+- Ingestion enforces an 8000-token embedding limit per record using the exact embed-content string; oversized records are quarantined to `data/corpus/ingest_oversized.jsonl` rather than truncated or allowed to crash the run.
