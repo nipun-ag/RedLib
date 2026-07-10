@@ -9,7 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 CORPUS_ROOT = Path("data") / "corpus"
-CLASSIFIED_PATH = CORPUS_ROOT / "classified.jsonl"
+CLASSIFIED_CLEAN_PATH = CORPUS_ROOT / "classified_clean.jsonl"
 INGEST_CHECKPOINT_PATH = CORPUS_ROOT / "ingest_checkpoint.json"
 COLLECTION_NAME = "redlib"
 UPSERT_BATCH_SIZE = 20
@@ -111,7 +111,7 @@ def count_classified_records() -> int:
     ensure_classified_corpus_exists()
 
     count = 0
-    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
+    with CLASSIFIED_CLEAN_PATH.open("r", encoding="utf-8") as classified_file:
         for line in classified_file:
             if line.strip():
                 count += 1
@@ -122,11 +122,11 @@ def count_classified_records() -> int:
 
 
 def ensure_classified_corpus_exists() -> None:
-    if CLASSIFIED_PATH.exists():
+    if CLASSIFIED_CLEAN_PATH.exists():
         return
     raise SystemExit(
-        "Classified corpus not found at data/corpus/classified.jsonl. "
-        "Run classify_corpus.py before ingest.py."
+        "Clean classified corpus not found at data/corpus/classified_clean.jsonl. "
+        "Run strip_subtechniques.py after classify_corpus.py and before ingest.py."
     )
 
 
@@ -160,7 +160,6 @@ def load_classified_record(payload: dict[str, Any], line_number: int) -> dict[st
         )
 
     primary_category = classification.get("primary_category")
-    subtechnique = classification.get("subtechnique")
     supporting_traits = classification.get("supporting_traits")
     confidence = classification.get("confidence")
     rationale = classification.get("rationale")
@@ -168,10 +167,6 @@ def load_classified_record(payload: dict[str, Any], line_number: int) -> dict[st
     if not isinstance(primary_category, str) or not primary_category.strip():
         raise SystemExit(
             f"Classified record at line {line_number} has invalid classification.primary_category."
-        )
-    if subtechnique is not None and not isinstance(subtechnique, str):
-        raise SystemExit(
-            f"Classified record at line {line_number} has invalid classification.subtechnique."
         )
     if not isinstance(supporting_traits, list):
         raise SystemExit(
@@ -193,7 +188,7 @@ def iter_classified_records(*, start_index: int = 0) -> Any:
     ensure_classified_corpus_exists()
 
     emitted = 0
-    with CLASSIFIED_PATH.open("r", encoding="utf-8") as classified_file:
+    with CLASSIFIED_CLEAN_PATH.open("r", encoding="utf-8") as classified_file:
         for line_number, line in enumerate(classified_file, start=1):
             stripped_line = line.strip()
             if not stripped_line:
@@ -254,7 +249,7 @@ def prepare_run_state(
     if checkpoint is None:
         return {
             "run_started_at": now_utc_iso(),
-            "classified_path": str(CLASSIFIED_PATH),
+            "classified_path": str(CLASSIFIED_CLEAN_PATH),
             "classified_sha256": classified_sha256,
             "total_records": total_records,
             "processed_records": 0,
@@ -265,7 +260,7 @@ def prepare_run_state(
     if checkpoint.get("classified_sha256") != classified_sha256:
         raise SystemExit(
             "Existing ingestion checkpoint does not match the current "
-            "classified.jsonl. Delete data/corpus/ingest_checkpoint.json "
+            "classified_clean.jsonl. Delete data/corpus/ingest_checkpoint.json "
             "to start a fresh ingestion run."
         )
 
@@ -297,7 +292,7 @@ def run_ingestion() -> None:
     ensure_classified_corpus_exists()
 
     total_records = count_classified_records()
-    classified_sha256 = compute_file_sha256(CLASSIFIED_PATH)
+    classified_sha256 = compute_file_sha256(CLASSIFIED_CLEAN_PATH)
     checkpoint = prepare_run_state(
         total_records=total_records,
         classified_sha256=classified_sha256,
@@ -309,11 +304,11 @@ def run_ingestion() -> None:
     if processed_records > total_records:
         raise SystemExit(
             "Ingestion checkpoint processed_records exceeds the number of "
-            "classified records."
+            "cleaned classified records."
         )
 
     logger.info(
-        "Starting ingestion over %s classified records; resuming at record %s",
+        "Starting ingestion over %s cleaned classified records; resuming at record %s",
         total_records,
         processed_records,
     )
@@ -348,7 +343,11 @@ def run_ingestion() -> None:
         checkpoint["processed_records"] = processed_records
         checkpoint["last_updated_at"] = now_utc_iso()
         save_checkpoint(checkpoint)
-        logger.info("Ingested %s/%s classified records", processed_records, total_records)
+        logger.info(
+            "Ingested %s/%s cleaned classified records",
+            processed_records,
+            total_records,
+        )
         batch_nodes = []
 
     if batch_nodes:
@@ -357,7 +356,11 @@ def run_ingestion() -> None:
         checkpoint["processed_records"] = processed_records
         checkpoint["last_updated_at"] = now_utc_iso()
         save_checkpoint(checkpoint)
-        logger.info("Ingested %s/%s classified records", processed_records, total_records)
+        logger.info(
+            "Ingested %s/%s cleaned classified records",
+            processed_records,
+            total_records,
+        )
 
     if processed_records != total_records:
         raise SystemExit(
@@ -369,7 +372,7 @@ def run_ingestion() -> None:
     save_checkpoint(checkpoint)
     remove_checkpoint_if_exists()
     logger.info(
-        "Ingestion complete. Embedded %s classified records into %s.",
+        "Ingestion complete. Embedded %s cleaned classified records into %s.",
         total_records,
         COLLECTION_NAME,
     )

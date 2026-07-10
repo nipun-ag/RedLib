@@ -43,7 +43,8 @@ redlib/
 |- corpus_sampling.py      # Shared deterministic sampling helpers for discovery and experiments.
 |- discover_taxonomy.py    # Derives candidate prompt families from normalized data.
 |- classify_corpus.py      # Applies the approved taxonomy across the corpus.
-|- ingest.py               # Embeds finalized classified corpus into Qdrant.
+|- strip_subtechniques.py  # Removes subtechnique from classification for ingestion.
+|- ingest.py               # Embeds finalized cleaned corpus into Qdrant.
 |- embedder.py             # Configures OpenAI text-embedding-3-small.
 |- retriever.py            # Configures Qdrant hybrid retrieval and Cohere rerank.
 |- router.py               # Builds the corpus-grounded RetrieverQueryEngine.
@@ -55,7 +56,8 @@ redlib/
 |     |- audit_report.json # Structured corpus quality report
 |     |- normalized.jsonl  # Deterministically normalized corpus
 |     |- proposed_taxonomy.json # Iterative human-review taxonomy proposal
-|     `- classified.jsonl  # Final corpus handed to ingestion
+|     |- classified.jsonl  # Original classified corpus with subtechnique preserved
+|     `- classified_clean.jsonl # Subtechnique-stripped corpus handed to ingestion
 |- frontend/               # Static frontend assets
 |  |- index.html           # Landing page
 |  |- search.html          # Main search interface
@@ -162,6 +164,14 @@ ingest.py
 Qdrant
 ```
 
+Operational ingestion handoff:
+```text
+classified.jsonl -> strip_subtechniques.py -> classified_clean.jsonl -> ingest.py -> Qdrant
+```
+
+`classified.jsonl` remains the original classified archive.
+`classified_clean.jsonl` is the ingestion artifact consumed by `ingest.py`.
+
 ### Why The Pipeline Is Staged
 
 - `fetch_corpus.py` exists so dataset acquisition is reproducible and
@@ -220,8 +230,11 @@ Qdrant
   taxonomy reflects research judgment, not only automated clustering.
 - `classify_corpus.py` exists so taxonomy application is consistent,
   corpus-wide, and auditable as a separate operation.
-- `ingest.py` exists only to embed and index the finalized corpus, not
-  to make corpus-preparation decisions.
+- `strip_subtechniques.py` exists so ingestion consumes a stable
+  classification shape that omits partial subtechnique coverage while
+  preserving the original classified archive for future reference.
+- `ingest.py` exists only to embed and index the finalized clean
+  corpus, not to make corpus-preparation decisions.
 
 ---
 
@@ -285,7 +298,7 @@ Qdrant
 
 ### `classified.jsonl`
 - Final approved corpus with applied taxonomy labels
-- Only corpus artifact consumed by `ingest.py`
+- Preserved as the original classified archive
 - Preserves normalized-record provenance and raw source fields
 - Stores one dominant primary jailbreak mechanism per prompt plus
   optional subtechnique, optional supporting traits, confidence, and a
@@ -313,6 +326,14 @@ Classified record shape:
   }
 }
 ```
+
+### `classified_clean.jsonl`
+- Subtechnique-stripped version of `classified.jsonl`
+- This is the file consumed by `ingest.py`
+- Preserves the original record shape except that
+  `classification.subtechnique` is removed entirely
+- Keeps `classified.jsonl` available as the original archive with
+  partial subtechnique data for future reference
 
 ### Operational Sidecars
 
@@ -475,6 +496,11 @@ Payload schema:
   "prompt_id": "string"
 }
 ```
+
+Notes:
+- Qdrant payload does not include `subtechnique`.
+- `ingest.py` reads `classified_clean.jsonl`, whose classification
+  object no longer carries a `subtechnique` key.
 
 Payload indexes:
 - `prompt_id`: `keyword`

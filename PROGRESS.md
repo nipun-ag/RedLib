@@ -1,5 +1,50 @@
 # RedLib — Progress Log
 
+## 2026-07-10
+Added a dedicated post-classification cleanup step so ingestion no
+longer depends on partial subtechnique coverage in the classified
+archive.
+
+Decision:
+- Keep `data/corpus/classified.jsonl` as the original archive produced
+  by `classify_corpus.py`, including its current `subtechnique` field.
+- Introduce `data/corpus/classified_clean.jsonl` as the pipeline
+  artifact consumed by `ingest.py`.
+
+Change:
+- Added `strip_subtechniques.py`, which streams
+  `data/corpus/classified.jsonl` line by line, removes
+  `classification.subtechnique` from each record, writes through
+  `classified_clean.staging.jsonl`, and atomically replaces
+  `classified_clean.jsonl` on success.
+- Updated `ingest.py` to consume `classified_clean.jsonl` instead of
+  `classified.jsonl`.
+- Removed ingestion-side validation and assumptions for
+  `classification.subtechnique`, since the cleaned corpus no longer
+  includes that key.
+- Updated `AGENTS.md` and `docs/ARCHITECTURE.md` so the documented
+  corpus pipeline is now:
+  `classified.jsonl -> strip_subtechniques.py -> classified_clean.jsonl -> ingest.py -> Qdrant`.
+
+Why this was needed:
+- The classified archive should preserve the richer original taxonomy
+  output for future reference, even if subtechnique coverage remains
+  partial or transitional.
+- Ingestion needs a stable artifact and stable payload expectations, so
+  dropping subtechnique before embedding keeps the operational handoff
+  clean without discarding the archival record.
+
+Verification:
+- `python -m py_compile strip_subtechniques.py`
+- `python -m py_compile ingest.py`
+- Source-shape check against the first 10 records of
+  `data/corpus/classified.jsonl`
+- Confirmed `ingest.py` now points only to `classified_clean.jsonl`
+- Did not run `strip_subtechniques.py` in-session so the corpus artifact
+  remains unchanged pending manual review
+
+---
+
 ## 2026-07-08
 Patched taxonomy gaps discovered during the full 169k-record
 classification run after repeated retries and recursive batch splits

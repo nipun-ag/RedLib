@@ -47,7 +47,8 @@ redlib/
 |- corpus_sampling.py    # Shared deterministic corpus sampling utilities for discovery and experiments
 |- discover_taxonomy.py  # Derive candidate attack families from normalized corpus data
 |- classify_corpus.py    # Apply the approved taxonomy across the finalized corpus
-|- ingest.py             # Embed the classified corpus into Qdrant
+|- strip_subtechniques.py # Remove subtechnique from classified records before ingestion
+|- ingest.py             # Embed the cleaned classified corpus into Qdrant
 |- embedder.py           # OpenAI embedding model configuration
 |- retriever.py          # Qdrant hybrid retrieval + RRF + Cohere rerank
 |- router.py             # Corpus-grounded query engine assembly
@@ -59,7 +60,8 @@ redlib/
 |     |- audit_report.json
 |     |- normalized.jsonl
 |     |- proposed_taxonomy.json
-|     `- classified.jsonl
+|     |- classified.jsonl
+|     `- classified_clean.jsonl
 |- frontend/             # Static frontend assets
 |  |- index.html         # Landing page with disclaimer gate
 |  |- search.html        # Main search interface
@@ -109,7 +111,8 @@ Current corpus pipeline:
 5. `discover_taxonomy.py` proposes natural prompt families from the corpus itself
 6. Human review approves the taxonomy proposal
 7. `classify_corpus.py` applies the approved taxonomy across the corpus
-8. `ingest.py` embeds only the finalized `classified.jsonl` corpus into Qdrant
+8. `strip_subtechniques.py` removes `classification.subtechnique` and writes `classified_clean.jsonl`
+9. `ingest.py` embeds only the finalized `classified_clean.jsonl` corpus into Qdrant
 
 Each corpus-stage script has exactly one responsibility:
 - `fetch_corpus.py`: acquisition and local snapshotting only
@@ -118,6 +121,7 @@ Each corpus-stage script has exactly one responsibility:
 - `normalize_corpus.py`: deterministic normalization only
 - `discover_taxonomy.py`: taxonomy discovery only
 - `classify_corpus.py`: taxonomy application only
+- `strip_subtechniques.py`: post-classification cleanup only
 - `ingest.py`: embedding and Qdrant writes only
 
 ## Corpus Principles
@@ -248,10 +252,14 @@ Phase 1 - In Development
   checkpointing, incremental staging, retry logging, controlled
   fallback to `Unclear / Needs Review`, and cached stratified
   experiment sampling via `--sample-size`
-- `ingest.py` now directly consumes finalized `classified.jsonl`
-  artifacts for embedding into Qdrant with resume-safe checkpointing and
-  no longer depends on legacy inline dataset loading or legacy
-  pre-taxonomy classification helpers
+- `strip_subtechniques.py` is implemented as a post-classification
+  cleanup stage that preserves `data/corpus/classified.jsonl` as the
+  original archive, removes `classification.subtechnique` from every
+  record, and writes `data/corpus/classified_clean.jsonl` via staging
+- `ingest.py` now directly consumes finalized
+  `data/corpus/classified_clean.jsonl` artifacts for embedding into
+  Qdrant with resume-safe checkpointing and no longer depends on legacy
+  inline dataset loading or legacy pre-taxonomy classification helpers
 - Prompt text lives in the `TextNode` body; metadata stores only
   `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`
