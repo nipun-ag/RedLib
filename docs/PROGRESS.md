@@ -1,6 +1,43 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-10
+Hardened the oversized-record quarantine path in `corpus/ingest.py` as
+a follow-up pass on the same-session ingestion safeguard.
+
+Issue:
+- The first quarantine fix still had a narrow crash window between
+  appending an oversized record to `data/corpus/ingest_oversized.jsonl`
+  and saving the next checkpoint.
+- If ingestion exited in that gap, a resumed run would reach the same
+  prompt again and append a duplicate quarantine entry before the
+  checkpoint could advance.
+- The previous 8000-token safety limit also left less headroom than we
+  wanted below OpenAI's hard 8192-token embedding ceiling.
+
+Change:
+- Added startup loading of already-quarantined `prompt_id` values from
+  `data/corpus/ingest_oversized.jsonl` and now skip duplicate appends
+  when resume encounters the same oversized record after a crash.
+- Lowered `EMBEDDING_TOKEN_LIMIT` from 8000 to 7800 to add more safety
+  margin while keeping the same quarantine behavior for oversized
+  records.
+- Updated `docs/ARCHITECTURE.md` so the documented ingestion constraint
+  stays aligned with the code.
+
+Why this was needed:
+- The quarantine file should remain a clean review artifact rather than
+  accumulating duplicate rows from resume timing.
+- The lower threshold makes it less likely that borderline prompts pass
+  local counting and still fail at the embedding API.
+
+Verification:
+- `python -m py_compile corpus/ingest.py`
+- Crash-window simulation showing resume no longer duplicates
+  `ingest_oversized.jsonl` entries for the same `prompt_id`
+
+---
+
+## 2026-07-10
 Added an embedding token-length guard to `corpus/ingest.py` so oversized
 records are quarantined instead of crashing ingestion.
 

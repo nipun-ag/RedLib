@@ -18,7 +18,7 @@ UPSERT_BATCH_SIZE = 400
 RATE_LIMIT_RETRY_DELAY_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
 EMBEDDING_MODEL_NAME = "text-embedding-3-small"
-EMBEDDING_TOKEN_LIMIT = 8000
+EMBEDDING_TOKEN_LIMIT = 7800
 
 
 def now_utc_iso() -> str:
@@ -241,6 +241,40 @@ def append_oversized_record(record: dict[str, Any], token_count: int) -> None:
         oversized_file.write("\n")
 
 
+def load_quarantined_prompt_ids() -> set[str]:
+    if not INGEST_OVERSIZED_PATH.exists():
+        return set()
+
+    prompt_ids: set[str] = set()
+    with INGEST_OVERSIZED_PATH.open("r", encoding="utf-8") as oversized_file:
+        for line_number, line in enumerate(oversized_file, start=1):
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
+
+            try:
+                payload = json.loads(stripped_line)
+            except json.JSONDecodeError as error:
+                raise SystemExit(
+                    f"Malformed ingest_oversized JSONL at line {line_number}: {error.msg}"
+                ) from error
+
+            if not isinstance(payload, dict):
+                raise SystemExit(
+                    f"Oversized ingestion record at line {line_number} is not a JSON object."
+                )
+
+            prompt_id = payload.get("prompt_id")
+            if not isinstance(prompt_id, str) or not prompt_id.strip():
+                raise SystemExit(
+                    f"Oversized ingestion record at line {line_number} has invalid prompt_id."
+                )
+
+            prompt_ids.add(prompt_id)
+
+    return prompt_ids
+
+
 def get_ingest_vector_store() -> tuple[Any, Any]:
     from qdrant_client import QdrantClient
     from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -457,6 +491,7 @@ def run_ingestion() -> None:
     batch_nodes: list[Any] = []
     total_batches = 0
     quarantined_records = 0
+    quarantined_prompt_ids = load_quarantined_prompt_ids()
     resume_mode = resume_prompt_id is not None
 
     for record in iter_classified_records(after_prompt_id=resume_prompt_id):
@@ -496,7 +531,14 @@ def run_ingestion() -> None:
             )
             batch_nodes = []
             batch_records = []
-            append_oversized_record(record, token_count)
+            if record["prompt_id"] not in quarantined_prompt_ids:
+                append_oversized_record(record, token_count)
+                quarantined_prompt_ids.add(record["prompt_id"])
+            else:
+                logger.warning(
+                    "Skipped duplicate oversized quarantine append for prompt_id=%s",
+                    record["prompt_id"],
+                )
             quarantined_records += 1
             records_ingested += 1
             logger.warning(

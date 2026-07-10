@@ -430,4 +430,4 @@ Deployment is split:
 - Taxonomy discovery and taxonomy application must stay separate stages.
 - Ingestion consumes only finalized classified corpus artifacts.
 - Prompt text is stored in the `TextNode` body, not in metadata.
-- Ingestion enforces an 8000-token embedding limit per record using the exact embed-content string; oversized records are quarantined to `data/corpus/ingest_oversized.jsonl` rather than truncated or allowed to crash the run.
+- Ingestion enforces a 7800-token embedding limit per record using the exact embed-content string; oversized records are quarantined to `data/corpus/ingest_oversized.jsonl` rather than truncated or allowed to crash the run.
