@@ -1,6 +1,62 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-10
+Rewrote `corpus/ingest.py` into a production-grade, LlamaIndex-native
+ingestion path that matches the live query pipeline's expectations.
+
+Issue:
+- The previous ingestion script mixed LlamaIndex node creation with a
+  thinner operational model than production needs.
+- It did not use prompt-id checkpoint resume, did not document the
+  batch-resume sidecar, and was too easy to drift away from the exact
+  serialized `TextNode` payload format that `api/app.py` reconstructs
+  through `metadata_dict_to_node(...)`.
+- Hybrid retrieval depends on both dense and sparse vector support, so
+  ingestion must provision the collection and indexes in the same shape
+  the retriever expects.
+
+Change:
+- Rewrote `corpus/ingest.py` around a single LlamaIndex-native
+  insertion path using `VectorStoreIndex` plus `QdrantVectorStore`
+  instead of mixing framework-managed nodes with lower-level upsert
+  assumptions.
+- Kept prompt text only in the `TextNode` body and stored metadata only
+  as `source`, `technique`, and `prompt_id`, with
+  `excluded_embed_metadata_keys` and `excluded_llm_metadata_keys` set
+  so metadata does not leak back into model inputs.
+- Switched ingestion batching to 50 records and added
+  `ingest_checkpoint.json`, which stores
+  `last_ingested_prompt_id`, `records_ingested`, `total_records`, and
+  `timestamp` after each successful batch.
+- Added resume logic that scans `classified.jsonl`, finds the last
+  ingested prompt ID, and continues from the following record.
+- Ensured ingestion provisions the `redlib` collection with dense
+  vector name `dense`, sparse vector name `sparse`, and keyword payload
+  indexes for both `prompt_id` and `technique`.
+- Added explicit 429 detection with a 60-second wait and up to 3
+  retries for the same batch before failing.
+- Updated `docs/ARCHITECTURE.md` to document the new ingestion
+  checkpoint artifact and the LlamaIndex-native Qdrant payload shape.
+
+Why this was needed:
+- `api/app.py` relies on LlamaIndex node serialization being present in
+  Qdrant so full-prompt lookup can reconstruct `TextNode` objects
+  correctly.
+- Production ingestion needs interruption-safe progress tracking and
+  collection provisioning that stays aligned with hybrid retrieval, not
+  a best-effort one-shot script.
+
+Verification:
+- `python -m py_compile corpus/ingest.py`
+- `python -c "import sys; sys.path.insert(0, '.'); import corpus.ingest; print('imports OK')"`
+- TextNode format check with excluded metadata keys
+- Source inspection confirming `ingest_checkpoint.json`,
+  `last_ingested_prompt_id`, `excluded_embed_metadata_keys`, and
+  `enable_hybrid` are all present in the rewritten script
+
+---
+
+## 2026-07-10
 Aligned the hardcoded technique taxonomy across the API, synthesis
 prompt, and frontend with the approved eight-category corpus taxonomy.
 

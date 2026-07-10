@@ -205,6 +205,11 @@ Classified record shape:
 ### `classified_checkpoint.json`
 - Checkpoint tracking classification progress for resume support
 
+### `ingest_checkpoint.json`
+- Checkpoint written by `python -m corpus.ingest` after each successful batch
+- Stores `last_ingested_prompt_id`, `records_ingested`, `total_records`, and `timestamp`
+- Used to resume ingestion from the next classified record after interruption
+
 ### `classification_failures.jsonl`
 - Per-batch failure log written during `python -m corpus.classify_corpus` runs
 
@@ -326,6 +331,8 @@ Sparse vectors:
 Payload schema:
 ```json
 {
+  "_node_content": "string",
+  "_node_type": "TextNode",
   "source": "string",
   "technique": "string",
   "prompt_id": "string"
@@ -335,9 +342,13 @@ Payload schema:
 Payload indexes:
 - `prompt_id`: `keyword`
 - used by `GET /api/prompts/{prompt_id}` for direct full-prompt lookup
+- `technique`: `keyword`
+- used by query-time category filtering
 
 Node content:
 - prompt text lives in the `TextNode` body
+- Qdrant payloads are written through LlamaIndex so `_node_content` and
+  `_node_type` are preserved for `metadata_dict_to_node(...)`
 - metadata stores only true metadata fields
 - result excerpts and full-prompt lookup both read from node content
 
