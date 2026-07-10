@@ -495,29 +495,32 @@ def run_ingestion() -> None:
     resume_mode = resume_prompt_id is not None
 
     for record in iter_classified_records(after_prompt_id=resume_prompt_id):
-        if resume_mode and is_already_ingested(client, record):
-            total_batches, records_ingested = flush_batch(
-                index=index,
-                batch_nodes=batch_nodes,
-                batch_records=batch_records,
-                batch_number=total_batches,
-                processed_records=records_ingested,
-                total_records=total_records,
-            )
-            batch_nodes = []
-            batch_records = []
-            records_ingested += 1
-            logger.warning(
-                "Skipped already-ingested resumed record prompt_id=%s source=%s",
-                record["prompt_id"],
-                record["source"],
-            )
-            save_checkpoint(
-                last_ingested_prompt_id=record["prompt_id"],
-                records_ingested=records_ingested,
-                total_records=total_records,
-            )
-            continue
+        if resume_mode:
+            if is_already_ingested(client, record):
+                total_batches, records_ingested = flush_batch(
+                    index=index,
+                    batch_nodes=batch_nodes,
+                    batch_records=batch_records,
+                    batch_number=total_batches,
+                    processed_records=records_ingested,
+                    total_records=total_records,
+                )
+                batch_nodes = []
+                batch_records = []
+                records_ingested += 1
+                logger.warning(
+                    "Skipped already-ingested resumed record prompt_id=%s source=%s",
+                    record["prompt_id"],
+                    record["source"],
+                )
+                save_checkpoint(
+                    last_ingested_prompt_id=record["prompt_id"],
+                    records_ingested=records_ingested,
+                    total_records=total_records,
+                )
+                continue
+
+            resume_mode = False
 
         node, token_count = get_embedding_content_and_token_count(record, tokenizer)
         if token_count > EMBEDDING_TOKEN_LIMIT:
