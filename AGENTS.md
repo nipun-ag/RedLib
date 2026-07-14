@@ -8,7 +8,7 @@ reproducible classified dataset, then indexes that finalized corpus in
 Qdrant Cloud for retrieval and synthesis.
 
 ## Tech Stack
-- Frontend: Vanilla JS, HTML, CSS (Tailwind via CDN, no build step)
+- Frontend: Vite + React + Tailwind CSS
 - Backend: FastAPI (Python)
 - RAG Framework: LlamaIndex
 - Vector DB: Qdrant Cloud (hybrid dense + sparse retrieval)
@@ -23,7 +23,7 @@ Qdrant Cloud for retrieval and synthesis.
 Frontend and backend are deployed as separate services.
 
 Frontend:
-- Static assets live in `frontend/`
+- Vite app lives in `frontend/`
 
 Backend:
 - FastAPI app in `api/app.py`
@@ -32,8 +32,7 @@ Backend:
 
 Local dev:
   Backend: `doppler run -- uvicorn api.app:app --reload --port 8000`
-  Frontend: open `frontend/index.html` directly in browser, or use
-            any static file server from the `frontend/` directory
+  Frontend: `cd frontend && npm run dev`
 
 ## File Structure
 ```text
@@ -97,7 +96,7 @@ redlib/
 - LlamaIndex components configured in their own modules and assembled
   in `api/rag.py`
 - Comments explain WHY a decision was made, not what the code does
-- All Tailwind used via CDN, no build step, no `node_modules`
+- Frontend uses the existing Vite/Tailwind toolchain already installed in `frontend/`
 
 ## Pipeline Stages
 Read before touching any retrieval file:
@@ -237,8 +236,11 @@ Phase 1 - In Development
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`
-- `frontend/index.html` is a minimal responsible-use gate that stores an acknowledgment before entering the app surface
-- `frontend/search.html` is the primary research UI with a sticky header, category sidebar, active mode strip, and a shared result area for both search and browse flows
+- `frontend/` now contains a Vite + React scaffold with Tailwind wired through `src/index.css`
+- `frontend/src/App.jsx` currently renders a minimal RedLib shell using the documented dark color tokens
+- `frontend/src/config.js` centralizes the Vite API base URL env binding
+- `frontend/src/lib/utils.js` provides the shared `cn(...)` helper for upcoming component work
+- `frontend/.env.local` and `frontend/.env.production` define local and production API targets for the Vite app
 - Search mode calls `POST /api/query` and renders an AI summary card plus excerpt-based result cards with confidence signals
 - Browse mode is wired for cursor-based `GET /api/browse` pagination and renders raw corpus cards without AI summary or confidence scoring
 - Full prompt inspection remains lazy-loaded through the modal flow backed by `GET /api/prompts/{prompt_id}`

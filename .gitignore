@@ -39,3 +39,6 @@ logs/
 # Ingestion
 ingest_checkpoint.json
 Skills/
+frontend/node_modules
+frontend/dist
+frontend/.env.local

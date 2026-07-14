@@ -2539,3 +2539,42 @@ Verification:
   after the rebuild
 
 ---
+## 2026-07-14
+Completed the remaining Vite + React frontend foundation setup in
+`frontend/` without reinstalling dependencies.
+
+Issue:
+- The Vite scaffold was still carrying the default starter component,
+  CSS, and document title, so the project did not yet expose the
+  intended RedLib baseline shell.
+- Tailwind's `content` array was empty, which would have prevented the
+  requested utility classes from compiling into the output CSS.
+
+Change:
+- Replaced `frontend/src/App.jsx` with a minimal full-screen RedLib
+  shell using the project color tokens.
+- Replaced `frontend/src/index.css` with Tailwind base/components/
+  utilities directives.
+- Replaced `frontend/src/main.jsx` with the requested React entrypoint.
+- Deleted `frontend/src/App.css`.
+- Added `frontend/src/lib/utils.js` with the shared `cn(...)` helper.
+- Added `frontend/src/config.js` for `VITE_API_BASE_URL`.
+- Added `frontend/.env.local` and `frontend/.env.production`.
+- Updated the root `.gitignore` to ignore `frontend/node_modules`,
+  `frontend/dist`, and `frontend/.env.local`.
+- Updated `frontend/tailwind.config.js` with the required RedLib color
+  tokens and populated `content` globs for Vite source files.
+- Updated `frontend/index.html` title to `RedLib`.
+
+Why this was needed:
+- This establishes a clean React/Tailwind foundation for the next UI
+  iteration while keeping API target configuration explicit and
+  environment-specific.
+- Filling in the Tailwind content paths was necessary for the
+  acceptance condition that the app render a black screen with red
+  `RedLib` text.
+
+Verification:
+- `npm.cmd run build`
+
+---
