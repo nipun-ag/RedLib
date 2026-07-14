@@ -312,6 +312,47 @@ Implementation details:
 Returns the approved taxonomy categories and live corpus counts used by
 the frontend filter sidebar.
 
+### GET /api/browse
+Direct category-browsing endpoint backed by Qdrant scroll. This route
+does not use embeddings, reranking, or synthesis.
+
+Query parameters:
+```text
+category=string            # required, exact approved taxonomy name
+cursor=string | null       # optional Qdrant scroll offset token
+limit=int                  # optional, default 20, max 50
+```
+
+Response:
+```json
+{
+  "results": [
+    {
+      "id": "string",
+      "prompt_excerpt": "string",
+      "technique": "string",
+      "source": "string"
+    }
+  ],
+  "next_cursor": "string | null",
+  "total": 0,
+  "category": "string"
+}
+```
+
+Implementation details:
+- `category` must match one of the approved taxonomy names exactly
+- browsing uses direct `QdrantClient.scroll(...)` with a payload filter
+  on `technique`
+- `cursor` maps directly to Qdrant scroll's `offset` parameter and
+  `next_cursor` is returned from `next_page_offset`
+- `prompt_excerpt` is reconstructed from node body content through
+  `metadata_dict_to_node(...)` and truncated with the same 500-character
+  no-mid-word logic used by `POST /api/query`
+- `total` comes from the same live category-count path used by
+  `GET /api/categories`
+- approved categories with zero prompts return a 404-style response
+
 ### GET /api/prompts/{prompt_id}
 Fetches one full prompt on demand for explicit result inspection.
 

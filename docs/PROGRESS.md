@@ -37,6 +37,45 @@ Verification:
 
 ---
 
+## 2026-07-14
+Added deterministic category browsing to `api/app.py` with a direct
+Qdrant scroll endpoint instead of routing browse requests through the
+RAG pipeline.
+
+Issue:
+- The frontend's browse mode was already wired for
+  `GET /api/browse?category=...&cursor=...&limit=20`, but the backend
+  did not yet expose that endpoint.
+- Browse mode needs raw category inspection over the stored corpus, not
+  embeddings, reranking, or synthesis.
+
+Change:
+- Added `GET /api/browse` directly in `api/app.py`.
+- Implemented category validation against the approved eight-category
+  taxonomy list already defined in the module.
+- Added direct `QdrantClient.scroll(...)` browsing filtered on the
+  `technique` payload field, using Qdrant's native `offset` cursor.
+- Added browse response models returning:
+  `results`, `next_cursor`, `total`, and `category`.
+- Reused the same prompt-excerpt truncation logic as `POST /api/query`
+  by factoring it into a shared helper.
+- Reused the live category-count cache path so browse totals stay
+  aligned with `/api/categories`.
+- Added a 400 response for invalid categories and a 404-style response
+  when an approved category currently has zero prompts in Qdrant.
+- Documented the new endpoint in `docs/ARCHITECTURE.md`.
+
+Why this was needed:
+- Browse mode is conceptually different from semantic search and should
+  stay deterministic, direct, and inexpensive.
+- Qdrant's scroll cursor is the right primitive for stable category
+  pagination without duplicate prompt cards across pages.
+
+Verification:
+- `python -m py_compile api/app.py`
+
+---
+
 ## 2026-07-10
 Added an embedding token-length guard to `corpus/ingest.py` so oversized
 records are quarantined instead of crashing ingestion.

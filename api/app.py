@@ -4,7 +4,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -91,6 +91,20 @@ class PromptResponse(BaseModel):
     source: str
 
 
+class BrowseResultCard(BaseModel):
+    id: str
+    prompt_excerpt: str
+    technique: str
+    source: str
+
+
+class BrowseResponse(BaseModel):
+    results: List[BrowseResultCard]
+    next_cursor: Optional[str]
+    total: int
+    category: str
+
+
 def get_qdrant_client() -> QdrantClient:
     """Configure and return a Qdrant client for lightweight app queries."""
     qdrant_url = os.environ.get("QDRANT_URL")
@@ -127,6 +141,46 @@ def ensure_keyword_payload_index(client: QdrantClient, field_name: str) -> None:
         field_name=field_name,
         field_schema=PayloadSchemaType.KEYWORD,
     )
+
+
+def build_prompt_excerpt(text: str) -> str:
+    """Keep prompt excerpts scan-friendly without splitting mid-word."""
+    excerpt = text[:PROMPT_EXCERPT_CHARS]
+    if len(text) > PROMPT_EXCERPT_CHARS:
+        last_space = excerpt.rfind(" ")
+        if last_space > 0:
+            excerpt = excerpt[:last_space]
+    return excerpt
+
+
+def validate_category_name(category: str) -> None:
+    """Reject categories that are not in the approved taxonomy."""
+    approved_categories = {name for name, _ in TECHNIQUE_CATEGORIES}
+    if category not in approved_categories:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid category. Category must match one of the approved "
+                "taxonomy technique names exactly."
+            ),
+        )
+
+
+def parse_scroll_cursor(cursor: Optional[str]) -> Optional[Union[int, str]]:
+    """Convert the frontend cursor token back into a Qdrant scroll offset."""
+    if cursor is None or cursor == "":
+        return None
+    if cursor.isdigit():
+        return int(cursor)
+    return cursor
+
+
+def get_category_total(category: str) -> int:
+    """Return the live count for one approved category using cached counts when available."""
+    for item in get_cached_category_items():
+        if item.name == category:
+            return item.count
+    return 0
 
 
 def get_prompt_by_id(prompt_id: str) -> PromptResponse:
@@ -200,6 +254,57 @@ def get_category_items() -> list[CategoryItem]:
         )
 
     return categories
+
+
+def browse_category(
+    category: str,
+    cursor: Optional[str],
+    limit: int,
+) -> BrowseResponse:
+    """Scroll Qdrant directly for deterministic category browsing."""
+    client = get_qdrant_client()
+    ensure_keyword_payload_index(client, "technique")
+
+    total = get_category_total(category)
+    if total == 0:
+        raise LookupError(category)
+
+    records, next_page_offset = client.scroll(
+        collection_name=QDRANT_COLLECTION_NAME,
+        scroll_filter=QdrantFilter(
+            must=[
+                FieldCondition(
+                    key="technique",
+                    match=MatchValue(value=category),
+                )
+            ]
+        ),
+        offset=parse_scroll_cursor(cursor),
+        limit=limit,
+        with_payload=True,
+        with_vectors=False,
+    )
+
+    results: list[BrowseResultCard] = []
+    for record in records:
+        payload = record.payload or {}
+        node = metadata_dict_to_node(payload)
+        text = node.get_content(metadata_mode=MetadataMode.NONE)
+        results.append(
+            BrowseResultCard(
+                id=payload.get("prompt_id", ""),
+                prompt_excerpt=build_prompt_excerpt(text),
+                technique=payload.get("technique", "Unknown"),
+                source=payload.get("source", ""),
+            )
+        )
+
+    return BrowseResponse(
+        results=results,
+        next_cursor=str(next_page_offset) if next_page_offset is not None else None,
+        total=total,
+        category=category,
+    )
 
 
 def get_cached_category_items() -> list[CategoryItem]:
@@ -300,13 +405,6 @@ async def query(request: QueryRequest) -> QueryResponse:
             metadata = node.metadata
             text = node.get_content(metadata_mode=MetadataMode.NONE)
 
-            # Keep result cards scan-friendly while showing more prompt context.
-            excerpt = text[:PROMPT_EXCERPT_CHARS]
-            if len(text) > PROMPT_EXCERPT_CHARS:
-                last_space = excerpt.rfind(" ")
-                if last_space > 0:
-                    excerpt = excerpt[:last_space]
-
             technique = metadata.get("technique", "Unknown")
             technique_counts[technique] = technique_counts.get(technique, 0) + 1
 
@@ -321,7 +419,7 @@ async def query(request: QueryRequest) -> QueryResponse:
 
             result_card = ResultCard(
                 id=metadata.get("prompt_id", ""),
-                prompt_excerpt=excerpt,
+                prompt_excerpt=build_prompt_excerpt(text),
                 technique=technique,
                 source=metadata.get("source", ""),
                 confidence=confidence,
@@ -362,6 +460,46 @@ async def get_categories() -> CategoriesResponse:
         raise HTTPException(
             status_code=500,
             detail="Failed to load category counts",
+        )
+
+
+@app.get("/api/browse")
+async def get_browse_results(
+    category: str,
+    cursor: Optional[str] = None,
+    limit: int = 20,
+) -> BrowseResponse:
+    """
+    Browse one approved technique category using direct Qdrant scroll pagination.
+    """
+    validate_category_name(category)
+    if limit < 1 or limit > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid limit. Limit must be between 1 and 50.",
+        )
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: browse_category(category=category, cursor=cursor, limit=limit),
+        )
+    except LookupError:
+        raise HTTPException(
+            status_code=404,
+            detail="Approved category exists but no prompts were found in Qdrant.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Failed to browse category {category}: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to browse category prompts",
         )
 
 
