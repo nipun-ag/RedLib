@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RedLib</title>
+  <meta
+    name="description"
+    content="RedLib is a research interface for AI safety practitioners and red teamers studying real adversarial jailbreak prompts."
+  >
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  >
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body class="gate-page">
+  <main class="gate-shell">
+    <section class="gate-panel" aria-labelledby="gate-title">
+      <p class="gate-kicker">Responsible Use Gate</p>
+      <h1 id="gate-title" class="gate-wordmark">RedLib</h1>
+      <p class="gate-copy">
+        RedLib is built for AI safety practitioners, red teamers, and
+        researchers studying real jailbreak mechanisms. It is not a prompt
+        playground or a consumer chat product.
+      </p>
+      <p class="gate-copy gate-copy-secondary">
+        Use this corpus to inspect patterns, compare techniques, and review
+        source material with operational care.
+      </p>
+      <button id="gate-enter" class="action-button action-button-primary" type="button">
+        I understand
+      </button>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById("gate-enter").addEventListener("click", function () {
+      window.sessionStorage.setItem("redlib_acknowledged", "true");
+      window.location.href = "./search.html";
+    });
+  </script>
+</body>
+</html>

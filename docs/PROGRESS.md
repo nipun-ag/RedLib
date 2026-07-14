@@ -2440,3 +2440,63 @@ Verification:
   modestly wider schema cap and no silent truncation path in Python.
 - Live 100-record smoke-test verification remains blocked in this shell
   because no usable Python launcher is available.
+## 2026-07-14
+Rebuilt the frontend from scratch around a dense, dark, practitioner-
+focused research interface that cleanly separates semantic search from
+raw corpus browsing while keeping a single operational layout.
+
+Issue:
+- The project needed a purpose-built frontend for RedLib's actual use
+  case: AI safety practitioners and red teamers inspecting a large
+  jailbreak corpus, not a generic consumer-styled search page.
+- The UI brief required two distinct result modes in one shared
+  interface, a lazy full-prompt inspection flow, an async-hydrated
+  category sidebar, and a minimal responsible-use gate.
+- `frontend/` did not yet contain the required static assets.
+
+Change:
+- Added `frontend/index.html` as a minimal responsible-use gate with
+  session-backed acknowledgment before entering the research interface.
+- Added `frontend/search.html` as the main application shell with:
+  - sticky 64px header
+  - two-column desktop layout
+  - collapsible mobile sidebar
+  - active mode strip
+  - shared result area for search and browse flows
+  - lazy full-prompt modal
+- Added `frontend/css/style.css` with the approved dark tactical design
+  system: exact color tokens, IBM Plex Mono + Inter typography,
+  hard-edged surfaces, and restrained motion.
+- Added `frontend/js/config.js` with `API_BASE_URL` as the only API
+  base definition.
+- Added `frontend/js/app.js` to implement:
+  - category labels rendered immediately from the approved taxonomy
+  - async category count hydration from `/api/categories`
+  - zero-count category hiding after hydration
+  - search mode via `POST /api/query`
+  - browse mode via assumed `GET /api/browse`
+  - cursor-based `Load More`
+  - lazy `GET /api/prompts/{prompt_id}` modal fetch
+  - live stats hydration from `/api/stats`
+  - explicit failure states for unavailable browse or backend errors
+- Replaced the placeholder `docs/DESIGN.md` with the full frontend
+  design system so future UI work has a concrete baseline.
+- Updated `AGENTS.md` current-state notes so the rebuilt frontend is now
+  documented as part of the live project state.
+
+Why this was needed:
+- RedLib's frontend has to communicate operational seriousness and
+  source-grounded research intent, not generic SaaS polish.
+- Keeping search and browse in one shell makes the distinction between
+  AI-mediated retrieval and raw corpus inspection explicit without
+  fragmenting the workflow.
+- The design system now exists as a living document instead of tribal
+  memory.
+
+Verification:
+- `node --check frontend/js/app.js`
+- `node --check frontend/js/config.js`
+- Browser verification for both HTML files and console cleanliness run
+  after the rebuild
+
+---

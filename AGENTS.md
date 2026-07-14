@@ -237,3 +237,9 @@ Phase 1 - In Development
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`
+- `frontend/index.html` is a minimal responsible-use gate that stores an acknowledgment before entering the app surface
+- `frontend/search.html` is the primary research UI with a sticky header, category sidebar, active mode strip, and a shared result area for both search and browse flows
+- Search mode calls `POST /api/query` and renders an AI summary card plus excerpt-based result cards with confidence signals
+- Browse mode is wired for cursor-based `GET /api/browse` pagination and renders raw corpus cards without AI summary or confidence scoring
+- Full prompt inspection remains lazy-loaded through the modal flow backed by `GET /api/prompts/{prompt_id}`
+- The frontend design system is now documented in `docs/DESIGN.md` as the living baseline for future UI work
