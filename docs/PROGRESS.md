@@ -1,5 +1,60 @@
 ﻿# RedLib — Progress Log
 
+## 2026-07-15
+Rebuilt the frontend as a pure static HTML/CSS/JS experience from the
+provided Stitch design references, replacing the removed React/Vite
+stack with a vanilla browser-ready implementation.
+
+Issue:
+- The repo had just been cleared back to an empty `frontend/` folder,
+  but the product still needed a complete research interface with a
+  responsible-use gate, live corpus stats, technique filters, semantic
+  search, browse pagination, and lazy prompt inspection.
+- The new build had to work without React, Vite, npm, or any build
+  step, while still matching the Stitch gate and workspace references
+  closely.
+
+Change:
+- Added `frontend/index.html` as the responsible-use gate with:
+  - Stitch-inspired obsidian card structure
+  - updated RedLib-specific responsible-use copy
+  - live `/api/stats` corpus count with fallback to `168,115`
+  - local-storage acknowledgment and redirect into `search.html`
+- Added `frontend/search.html` as the main research workspace with:
+  - Stitch-inspired glass header and dark workspace shell
+  - live stats bar from `/api/stats`
+  - technique sidebar from `/api/categories`
+  - SEARCH / BROWSE toggle and live mode explainer
+  - AI summary card for semantic search
+  - result cards with source attribution and `View Full Prompt →`
+  - lazy full-prompt modal backed by `/api/prompts/{prompt_id}`
+- Added `frontend/css/style.css` with a reusable token system based on
+  the Stitch "Obsidian Crimson" palette and interaction model, while
+  enforcing RedLib's zero-radius requirement globally.
+- Added `frontend/js/config.js` with the single exported
+  `API_BASE_URL` constant and `frontend/js/app.js` with all workspace
+  logic in plain JavaScript.
+- Updated `docs/DESIGN.md` to document the new vanilla frontend design
+  system and added `stitch/` to `.gitignore` so local design reference
+  assets stay untracked.
+
+Why this was needed:
+- RedLib still needs a high-fidelity frontend even after the React/Vite
+  stack was intentionally removed.
+- A static implementation keeps the deployment and local preview model
+  simple while preserving the premium dark interaction language from
+  the Stitch references.
+
+Verification:
+- `node --check frontend/js/app.js`
+- `node --check frontend/js/config.js`
+- Loaded the pages through a local `python -m http.server` instance
+- Attempted browser-runtime verification; the in-app browser was
+  unavailable in this session, so final visual verification fell back
+  to local browser-binary launch attempts plus source inspection
+
+---
+
 ## 2026-07-10
 Hardened the oversized-record quarantine path in `corpus/ingest.py` as
 a follow-up pass on the same-session ingestion safeguard.

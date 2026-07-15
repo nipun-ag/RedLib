@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RedLib Research Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body class="page-workspace">
+    <div class="ambient-orb ambient-orb-top"></div>
+    <div class="ambient-orb ambient-orb-bottom"></div>
+
+    <div class="workspace-shell">
+      <aside class="glass-panel workspace-sidebar">
+        <div class="sidebar-brand">RedLib</div>
+        <div class="sidebar-label">TECHNIQUES</div>
+        <nav id="technique-list" class="technique-list" aria-label="Technique filters"></nav>
+        <button id="clear-filter-button" class="text-button" type="button">Clear filter</button>
+      </aside>
+
+      <main class="workspace-main">
+        <header class="glass-panel workspace-header">
+          <div class="workspace-wordmark">RedLib</div>
+          <a
+            class="header-link"
+            href="https://github.com/nipun-ag/redlib"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
+        </header>
+
+        <div class="workspace-content">
+          <section id="stats-bar" class="stats-grid" aria-label="Corpus statistics">
+            <article class="glass-panel stat-card">
+              <div class="stat-label">Total Prompts</div>
+              <div id="stat-total-prompts" class="stat-value skeleton-text">&mdash;</div>
+            </article>
+            <article class="glass-panel stat-card">
+              <div class="stat-label">Sources</div>
+              <div id="stat-total-sources" class="stat-value skeleton-text">&mdash;</div>
+            </article>
+            <article class="glass-panel stat-card">
+              <div class="stat-label">Last Sync</div>
+              <div id="stat-last-sync" class="stat-value skeleton-text">&mdash;</div>
+            </article>
+          </section>
+
+          <section class="workspace-panel">
+            <div class="mode-toggle" role="tablist" aria-label="Research mode">
+              <button id="mode-search" class="mode-button is-active" type="button" role="tab" aria-selected="true">
+                Search
+              </button>
+              <button id="mode-browse" class="mode-button" type="button" role="tab" aria-selected="false">
+                Browse
+              </button>
+            </div>
+
+            <div class="search-row">
+              <div class="search-input-shell glass-panel">
+                <span class="search-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                      d="M10.5 4a6.5 6.5 0 1 0 4.1 11.56l4.42 4.42 1.41-1.41-4.42-4.42A6.5 6.5 0 0 0 10.5 4Zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Z"
+                    ></path>
+                  </svg>
+                </span>
+                <input
+                  id="search-input"
+                  class="search-input"
+                  type="text"
+                  placeholder="Analyze adversarial prompt patterns..."
+                  autocomplete="off"
+                />
+              </div>
+              <button id="search-button" class="crimson-glow-button search-button" type="button">Search</button>
+            </div>
+
+            <p id="mode-explainer" class="mode-explainer">
+              Search finds the most relevant prompts using AI, then summarizes what it found. 0 prompts searched.
+            </p>
+
+            <section id="results-area" class="results-stack" aria-live="polite"></section>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="prompt-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <section class="glass-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <header class="modal-header">
+          <div class="modal-title-block">
+            <div class="modal-eyebrow">Full Prompt</div>
+            <div class="modal-title-row">
+              <h2 id="modal-title" class="modal-title">Full Prompt</h2>
+              <span id="modal-technique-tag" class="technique-tag"></span>
+            </div>
+            <div id="modal-prompt-id" class="modal-prompt-id"></div>
+          </div>
+          <button id="modal-close-button" class="icon-button" type="button" aria-label="Close full prompt">
+            &times;
+          </button>
+        </header>
+        <div id="modal-body" class="modal-body custom-scrollbar"></div>
+        <footer id="modal-footer" class="modal-footer"></footer>
+      </section>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>

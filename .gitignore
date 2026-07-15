@@ -39,3 +39,4 @@ logs/
 # Ingestion
 ingest_checkpoint.json
 Skills/
+stitch/

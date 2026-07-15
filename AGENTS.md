@@ -8,7 +8,7 @@ reproducible classified dataset, then indexes that finalized corpus in
 Qdrant Cloud for retrieval and synthesis.
 
 ## Tech Stack
-- Frontend: Vite + React + Tailwind CSS
+- Frontend: Vanilla HTML + CSS + JavaScript
 - Backend: FastAPI (Python)
 - RAG Framework: LlamaIndex
 - Vector DB: Qdrant Cloud (hybrid dense + sparse retrieval)
@@ -23,11 +23,14 @@ Qdrant Cloud for retrieval and synthesis.
 Frontend and backend are deployed as separate services.
 
 Frontend:
-- Vite app lives in `frontend/`
-- React source lives in `frontend/src/`
-- Routes:
-  - `/` responsible-use gate
-  - `/workspace` main research workspace
+- Static frontend assets live in `frontend/`
+- Pages:
+  - `index.html` responsible-use gate
+  - `search.html` main research workspace
+- Shared assets:
+  - `css/style.css`
+  - `js/config.js`
+  - `js/app.js`
 
 Backend:
 - FastAPI app in `api/app.py`
@@ -36,7 +39,8 @@ Backend:
 
 Local dev:
   Backend: `doppler run -- uvicorn api.app:app --reload --port 8000`
-  Frontend: `cd frontend && npm run dev`
+  Frontend: open `frontend/index.html` directly or serve `frontend/`
+  with any static file server
 
 ## File Structure
 ```text
@@ -75,17 +79,12 @@ redlib/
 |  `- PROGRESS.md
 |- frontend/
 |  |- index.html
-|  |- package.json
-|  |- src/
-|  |  |- App.jsx
-|  |  |- config.js
-|  |  |- index.css
-|  |  |- main.jsx
-|  |  |- components/
-|  |  |- hooks/
-|  |  |- lib/
-|  |  `- pages/
-|  `- ...
+|  |- search.html
+|  |- css/
+|  |  `- style.css
+|  `- js/
+|     |- config.js
+|     `- app.js
 |- requirements.txt
 |- .env.example
 |- .gitignore
@@ -105,7 +104,7 @@ redlib/
 - LlamaIndex components configured in their own modules and assembled
   in `api/rag.py`
 - Comments explain WHY a decision was made, not what the code does
-- Frontend uses the existing Vite/Tailwind toolchain already installed in `frontend/`
+- Frontend is implemented as static HTML/CSS/JS with no build step
 
 ## Pipeline Stages
 Read before touching any retrieval file:
@@ -245,14 +244,12 @@ Phase 1 - In Development
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`
-- `frontend/src/` has been fully rebuilt around a route-based React app
-- `/` now renders a responsible-use gate with local-storage acknowledgment persistence
-- `/workspace` now renders the main research interface with a sticky header, live stats bar, technique rail, search/browse mode controls, and result panels
-- `frontend/src/config.js` remains the only source of `API_BASE_URL`
-- `frontend/src/lib/utils.js` provides shared `cn(...)`, formatting helpers, and the common JSON fetch wrapper
-- `frontend/.env.local` and `frontend/.env.production` define local and production API targets for the Vite app
+- `frontend/index.html` now renders the responsible-use gate with local-storage acknowledgment persistence
+- `frontend/search.html` now renders the main research interface with a glass sidebar, live stats bar, search/browse mode controls, and result panels
+- `frontend/js/config.js` remains the only source of `API_BASE_URL`
+- `frontend/js/app.js` owns all workspace behavior in plain JavaScript
 - Search mode calls `POST /api/query` and renders an AI summary card plus excerpt-based result cards with confidence signals
 - Browse mode is wired for cursor-based `GET /api/browse` pagination and renders raw corpus cards without AI summary or confidence scoring
 - Full prompt inspection remains lazy-loaded through the modal flow backed by `GET /api/prompts/{prompt_id}`
-- Gate and workspace visuals now follow a Resend-inspired premium dark system: pure black background, near-black panels, subtle border depth, serif gate headline, and restrained red glow accents
+- Gate and workspace visuals now follow the Stitch "Obsidian Crimson" dark glass system adapted to RedLib's zero-radius constraints
 - The frontend design system is now documented in `docs/DESIGN.md` as the living baseline for future UI work
