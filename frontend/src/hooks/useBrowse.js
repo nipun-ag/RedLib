@@ -1,79 +1,73 @@
-import { useState } from "react"
-import { API_BASE_URL } from "@/config"
+import { useState } from "react";
+import { fetchJson } from "../lib/utils";
 
-const INITIAL_BROWSE_DATA = {
-  results: [],
-  next_cursor: null,
-  total: 0,
-  category: "",
-}
+const PAGE_SIZE = 20;
 
 export function useBrowse() {
-  const [data, setData] = useState(INITIAL_BROWSE_DATA)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
 
-  const loadFirstPage = async (category) => {
-    if (!category) {
-      return
-    }
-
-    setLoading(true)
-    setError("")
+  async function runBrowse(category) {
+    setLoading(true);
+    setError("");
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/browse?category=${encodeURIComponent(category)}&limit=20`
-      )
-      const payload = await response.json()
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "Failed to browse category prompts.")
-      }
-
-      setData(payload)
-    } catch (requestError) {
-      setError(requestError.message)
-      setData(INITIAL_BROWSE_DATA)
+      const response = await fetchJson(
+        `/api/browse?category=${encodeURIComponent(category)}&limit=${PAGE_SIZE}`,
+      );
+      setData(response);
+      return response;
+    } catch (browseError) {
+      setError(browseError.message);
+      throw browseError;
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
-  const loadNextPage = async () => {
-    if (!data.category || !data.next_cursor) {
-      return
+  async function loadMore() {
+    if (!data?.next_cursor || !data?.category) {
+      return null;
     }
 
-    setLoading(true)
-    setError("")
+    setLoadingMore(true);
+    setError("");
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/browse?category=${encodeURIComponent(data.category)}&cursor=${encodeURIComponent(data.next_cursor)}&limit=20`
-      )
-      const payload = await response.json()
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "Failed to load the next browse page.")
-      }
+      const response = await fetchJson(
+        `/api/browse?category=${encodeURIComponent(data.category)}&limit=${PAGE_SIZE}&cursor=${encodeURIComponent(data.next_cursor)}`,
+      );
 
       setData((current) => ({
-        ...payload,
-        results: [...current.results, ...payload.results],
-      }))
-    } catch (requestError) {
-      setError(requestError.message)
+        ...response,
+        results: [...(current?.results ?? []), ...(response.results ?? [])],
+      }));
+
+      return response;
+    } catch (browseError) {
+      setError(browseError.message);
+      throw browseError;
     } finally {
-      setLoading(false)
+      setLoadingMore(false);
     }
+  }
+
+  function resetBrowse() {
+    setData(null);
+    setError("");
+    setLoading(false);
+    setLoadingMore(false);
   }
 
   return {
     data,
     loading,
+    loadingMore,
     error,
-    loadFirstPage,
-    loadNextPage,
-  }
+    runBrowse,
+    loadMore,
+    resetBrowse,
+  };
 }

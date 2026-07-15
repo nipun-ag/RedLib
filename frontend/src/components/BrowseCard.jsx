@@ -1,22 +1,9 @@
-const CONFIDENCE_CLASS_MAP = {
-  HIGH: "confidence-high",
-  MED: "confidence-med",
-  LOW: "confidence-low",
-};
-
-export default function ResultCard({ result, onViewPrompt }) {
+export default function BrowseCard({ result, onViewPrompt }) {
   return (
     <article className="result-card">
       <div className="result-meta-row">
         <div className="result-meta-left">
           <span className="technique-tag">{result.technique}</span>
-          <span className="confidence-group">
-            <span
-              className={`confidence-dot ${CONFIDENCE_CLASS_MAP[result.confidence] ?? "confidence-low"}`}
-              aria-hidden="true"
-            />
-            <span className="confidence-label">{result.confidence}</span>
-          </span>
         </div>
 
         <span className="result-source">{result.source}</span>

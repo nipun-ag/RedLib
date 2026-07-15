@@ -1,40 +1,73 @@
-export function FullPromptModal({ isOpen, loading, error, prompt, onClose }) {
+import { useEffect } from "react";
+import { usePrompt } from "../hooks/usePrompt";
+
+export default function FullPromptModal({ promptId, isOpen, onClose, fallbackTechnique, fallbackSource }) {
+  const { data, loading, error } = usePrompt(promptId, isOpen);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) {
-    return null
+    return null;
   }
 
+  const technique = data?.technique ?? fallbackTechnique ?? "";
+  const source = data?.source ?? fallbackSource ?? "";
+
   return (
-    <div className="modal-shell" role="dialog" aria-modal="true" aria-labelledby="full-prompt-title">
-      <div className="modal-panel">
-        <div className="modal-header">
-          <div>
-            <div className="eyebrow mono">Prompt Inspection</div>
-            <h2 id="full-prompt-title" className="result-technique">
-              {loading ? "Loading Full Prompt" : prompt?.technique || "Full Prompt"}
-            </h2>
-            {prompt ? (
-              <div className="modal-meta mono">
-                <span>Prompt ID {prompt.id}</span>
-                <span>Source {prompt.source}</span>
-              </div>
-            ) : null}
+    <div
+      className="modal-overlay"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title">
+        <header className="modal-header">
+          <div className="modal-header-copy">
+            <span className="modal-prompt-id" id="prompt-modal-title">
+              {promptId}
+            </span>
+            {technique ? <span className="technique-tag">{technique}</span> : null}
           </div>
 
-          <button type="button" className="button-secondary mono" onClick={onClose}>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Close full prompt">
             Close
           </button>
-        </div>
+        </header>
 
         <div className="modal-body">
-          {error ? <div className="status-note">{error}</div> : null}
-          {loading ? <div className="loading-line mono">Fetching full prompt body</div> : null}
-          {!loading && !error && prompt ? (
-            <pre className="prompt-panel">{prompt.full_prompt}</pre>
-          ) : null}
+          {loading ? (
+            <div className="modal-skeleton">
+              <span className="skeleton-line modal-skeleton-line" />
+              <span className="skeleton-line modal-skeleton-line" />
+              <span className="skeleton-line modal-skeleton-line short" />
+            </div>
+          ) : error ? (
+            <p className="status-text status-error">{error}</p>
+          ) : (
+            <pre className="prompt-body">{data?.full_prompt ?? ""}</pre>
+          )}
         </div>
 
-        <div className="footer-note mono">Plain-text prompt view.</div>
-      </div>
+        <footer className="modal-footer">Source: {source || "Unknown"}</footer>
+      </section>
     </div>
-  )
+  );
 }

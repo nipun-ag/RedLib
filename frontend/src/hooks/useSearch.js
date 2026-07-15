@@ -1,47 +1,38 @@
-import { useState } from "react"
-import { API_BASE_URL } from "@/config"
-
-const INITIAL_SEARCH_DATA = {
-  answer: "",
-  results: [],
-  technique_breakdown: {},
-  result_count: 0,
-}
+import { useState } from "react";
+import { fetchJson } from "../lib/utils";
 
 export function useSearch() {
-  const [data, setData] = useState(INITIAL_SEARCH_DATA)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const runSearch = async (query, categoryFilter) => {
-    setLoading(true)
-    setError("")
+  async function runSearch(query, categoryFilter) {
+    setLoading(true);
+    setError("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/query`, {
+      const response = await fetchJson("/api/query", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           query,
-          category_filter: categoryFilter,
+          category_filter: categoryFilter || null,
         }),
-      })
+      });
 
-      const payload = await response.json()
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "Search request failed.")
-      }
-
-      setData(payload)
-    } catch (requestError) {
-      setError(requestError.message)
-      setData(INITIAL_SEARCH_DATA)
+      setData(response);
+      return response;
+    } catch (searchError) {
+      setError(searchError.message);
+      throw searchError;
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
+  }
+
+  function resetSearch() {
+    setData(null);
+    setError("");
+    setLoading(false);
   }
 
   return {
@@ -49,5 +40,6 @@ export function useSearch() {
     loading,
     error,
     runSearch,
-  }
+    resetSearch,
+  };
 }

@@ -1,43 +1,44 @@
-import { useEffect, useState } from "react"
-import { API_BASE_URL } from "@/config"
+import { useEffect, useState } from "react";
+import { fetchJson } from "../lib/utils";
 
 export function useCategories() {
-  const [categories, setCategories] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let isMounted = true
+    let isActive = true;
 
-    const loadCategories = async () => {
+    async function loadCategories() {
+      setLoading(true);
+      setError("");
+
       try {
-        const response = await fetch(`${API_BASE_URL}/api/categories`)
-        const payload = await response.json()
-
-        if (!response.ok) {
-          throw new Error(payload.detail || "Failed to load category counts.")
+        const data = await fetchJson("/api/categories");
+        if (isActive) {
+          setCategories(data.categories ?? []);
         }
-
-        if (isMounted) {
-          setCategories(payload.categories || [])
-        }
-      } catch (requestError) {
-        if (isMounted) {
-          setError(requestError.message)
+      } catch (loadError) {
+        if (isActive) {
+          setError(loadError.message);
         }
       } finally {
-        if (isMounted) {
-          setLoading(false)
+        if (isActive) {
+          setLoading(false);
         }
       }
     }
 
-    loadCategories()
+    loadCategories();
 
     return () => {
-      isMounted = false
-    }
-  }, [])
+      isActive = false;
+    };
+  }, []);
 
-  return { categories, loading, error }
+  return {
+    categories,
+    loading,
+    error,
+  };
 }

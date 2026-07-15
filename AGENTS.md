@@ -24,6 +24,10 @@ Frontend and backend are deployed as separate services.
 
 Frontend:
 - Vite app lives in `frontend/`
+- React source lives in `frontend/src/`
+- Routes:
+  - `/` responsible-use gate
+  - `/workspace` main research workspace
 
 Backend:
 - FastAPI app in `api/app.py`
@@ -71,12 +75,17 @@ redlib/
 |  `- PROGRESS.md
 |- frontend/
 |  |- index.html
-|  |- search.html
-|  |- css/
-|  |  `- style.css
-|  `- js/
-|     |- config.js
-|     `- app.js
+|  |- package.json
+|  |- src/
+|  |  |- App.jsx
+|  |  |- config.js
+|  |  |- index.css
+|  |  |- main.jsx
+|  |  |- components/
+|  |  |- hooks/
+|  |  |- lib/
+|  |  `- pages/
+|  `- ...
 |- requirements.txt
 |- .env.example
 |- .gitignore
@@ -236,12 +245,14 @@ Phase 1 - In Development
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
 - Frontend assets are implemented under `frontend/`
-- `frontend/` now contains a Vite + React scaffold with Tailwind wired through `src/index.css`
-- `frontend/src/App.jsx` currently renders a minimal RedLib shell using the documented dark color tokens
-- `frontend/src/config.js` centralizes the Vite API base URL env binding
-- `frontend/src/lib/utils.js` provides the shared `cn(...)` helper for upcoming component work
+- `frontend/src/` has been fully rebuilt around a route-based React app
+- `/` now renders a responsible-use gate with local-storage acknowledgment persistence
+- `/workspace` now renders the main research interface with a sticky header, live stats bar, technique rail, search/browse mode controls, and result panels
+- `frontend/src/config.js` remains the only source of `API_BASE_URL`
+- `frontend/src/lib/utils.js` provides shared `cn(...)`, formatting helpers, and the common JSON fetch wrapper
 - `frontend/.env.local` and `frontend/.env.production` define local and production API targets for the Vite app
 - Search mode calls `POST /api/query` and renders an AI summary card plus excerpt-based result cards with confidence signals
 - Browse mode is wired for cursor-based `GET /api/browse` pagination and renders raw corpus cards without AI summary or confidence scoring
 - Full prompt inspection remains lazy-loaded through the modal flow backed by `GET /api/prompts/{prompt_id}`
+- Gate and workspace visuals now follow a Resend-inspired premium dark system: pure black background, near-black panels, subtle border depth, serif gate headline, and restrained red glow accents
 - The frontend design system is now documented in `docs/DESIGN.md` as the living baseline for future UI work

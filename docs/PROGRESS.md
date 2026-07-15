@@ -2579,6 +2579,59 @@ Verification:
 
 ---
 ## 2026-07-15
+Completely rebuilt the React frontend in `frontend/src/` around a
+Resend-inspired premium dark aesthetic with a new route-based app
+structure and live API wiring throughout.
+
+Issue:
+- The prior Vite frontend did not match the requested visual direction
+  and still carried earlier structural assumptions from the placeholder
+  shell.
+- The rebuild brief required a full replacement, not a polish pass:
+  hard-edged black surfaces, serif gate typography, route-level gate
+  flow, live stats and categories, distinct search and browse behavior,
+  and a lazy full-prompt modal.
+
+Change:
+- Deleted the existing `frontend/src/` application files and replaced
+  them with a fresh React Router app:
+  - `pages/Gate.jsx`
+  - `pages/Workspace.jsx`
+  - dedicated `components/`, `hooks/`, and `lib/` modules
+- Added gate acknowledgment persistence in local storage with automatic
+  redirect from `/` to `/workspace` once accepted.
+- Added live corpus stats from `GET /api/stats` for both the gate and
+  the workspace stat bar.
+- Added live taxonomy loading from `GET /api/categories` with count-up
+  animation and skeleton badge placeholders.
+- Added semantic search via `POST /api/query` with:
+  - AI summary card
+  - confidence states
+  - source attribution on every card
+  - excerpt-only result rendering
+- Added browse mode via `GET /api/browse` with category-first loading,
+  cursor pagination, and explicit `Load more`.
+- Added lazy prompt inspection via `GET /api/prompts/{prompt_id}` with
+  loading and error states inside the modal body.
+- Replaced the prior CSS baseline with a documented pure-black,
+  border-driven, zero-radius design system in `frontend/src/index.css`.
+- Rewrote `docs/DESIGN.md` to describe the shipped Resend-inspired
+  visual system and updated `AGENTS.md` current state to match the new
+  frontend.
+
+Why this was needed:
+- The new frontend has to feel like a serious research instrument,
+  rather than a generic app scaffold or tactical UI.
+- The product now clearly distinguishes AI-mediated search from direct
+  raw-corpus browsing without splitting them into separate applications.
+
+Verification:
+- `npm install react-router-dom`
+- `npm run build`
+
+---
+
+## 2026-07-15
 Built the complete React frontend in `frontend/src/` around a
 research-grade, hard-edged interface that matches the live RedLib API
 contracts and workflow.
