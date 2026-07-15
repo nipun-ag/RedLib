@@ -841,35 +841,6 @@ button {
   border: 1px solid rgba(255, 85, 69, 0.2);
 }
 
-.confidence-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(231, 189, 183, 0.76);
-  font-family: var(--font-code);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
-.confidence-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--muted-confidence);
-}
-
-.confidence-high {
-  background: var(--green-confidence);
-}
-
-.confidence-med {
-  background: var(--amber-confidence);
-}
-
-.confidence-low {
-  background: var(--muted-confidence);
-}
-
 .result-source {
   margin-left: auto;
   font-size: 13px;

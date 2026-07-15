@@ -304,25 +304,7 @@ function createTechniqueTag(text) {
   return tag;
 }
 
-function createConfidenceIndicator(confidence) {
-  const wrapper = document.createElement("span");
-  wrapper.className = "confidence-indicator";
-
-  const dot = document.createElement("span");
-  dot.className = "confidence-dot";
-  dot.classList.add(
-    confidence === "HIGH" ? "confidence-high" :
-      confidence === "MED" ? "confidence-med" : "confidence-low",
-  );
-
-  const label = document.createElement("span");
-  label.textContent = confidence;
-
-  wrapper.append(dot, label);
-  return wrapper;
-}
-
-function createResultCard(result, includeConfidence) {
+function createResultCard(result) {
   const card = document.createElement("article");
   card.className = "glass-panel result-card";
 
@@ -332,10 +314,6 @@ function createResultCard(result, includeConfidence) {
   const left = document.createElement("div");
   left.className = "result-meta-left";
   left.appendChild(createTechniqueTag(result.technique || "Unknown"));
-
-  if (includeConfidence) {
-    left.appendChild(createConfidenceIndicator(result.confidence || "LOW"));
-  }
 
   const source = document.createElement("div");
   source.className = "result-source";
@@ -388,7 +366,7 @@ function renderSearchResults() {
   elements.resultsArea.appendChild(summary);
 
   state.searchResults.forEach((result) => {
-    elements.resultsArea.appendChild(createResultCard(result, true));
+    elements.resultsArea.appendChild(createResultCard(result));
   });
 }
 
@@ -399,7 +377,7 @@ function renderBrowseResults() {
   }
 
   state.browseResults.forEach((result) => {
-    elements.resultsArea.appendChild(createResultCard(result, false));
+    elements.resultsArea.appendChild(createResultCard(result));
   });
 
   if (state.browseCursor) {
