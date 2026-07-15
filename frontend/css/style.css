@@ -611,31 +611,27 @@ button {
   letter-spacing: -0.03em;
 }
 
-.stat-tooltip {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 220px;
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  color: rgba(231, 189, 183, 0.72);
-  font-size: 12px;
-  line-height: 16px;
-  background: rgba(30, 31, 35, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(6px);
-  transition:
-    opacity var(--transition-fast),
-    transform var(--transition-fast);
-  z-index: 30;
+.sources-card-wrapper {
+  position: relative;
 }
 
-.stat-tooltip.is-visible {
-  opacity: 1;
-  transform: translateY(0);
+.sources-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: #1a1b1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 16px;
+  z-index: 1000;
+  min-width: 200px;
+  font-size: 12px;
+  color: #9a9a9a;
+  line-height: 1.8;
+}
+
+.sources-card-wrapper:hover .sources-tooltip {
+  display: block;
 }
 
 .workspace-panel {

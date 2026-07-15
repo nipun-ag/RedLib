@@ -66,8 +66,6 @@ const elements = {
     sources: document.getElementById("stat-total-sources"),
   },
   sidebar: document.querySelector(".workspace-sidebar"),
-  sourcesStatCard: document.getElementById("sources-stat-card"),
-  sourcesTooltip: document.getElementById("sources-tooltip"),
   techniqueList: document.getElementById("technique-list"),
   clearFilterButton: document.getElementById("clear-filter-button"),
   modeSearchButton: document.getElementById("mode-search"),
@@ -459,24 +457,6 @@ function setMode(mode) {
   renderMode();
 }
 
-function positionSourcesTooltip() {
-  const rect = elements.sourcesStatCard.getBoundingClientRect();
-  elements.sourcesTooltip.style.top = `${rect.bottom + 8}px`;
-  elements.sourcesTooltip.style.left = `${Math.min(
-    rect.left,
-    window.innerWidth - elements.sourcesTooltip.offsetWidth - 16,
-  )}px`;
-}
-
-function showSourcesTooltip() {
-  positionSourcesTooltip();
-  elements.sourcesTooltip.classList.add("is-visible");
-}
-
-function hideSourcesTooltip() {
-  elements.sourcesTooltip.classList.remove("is-visible");
-}
-
 function triggerBrowseAttention() {
   elements.sidebar.classList.remove("attention-pulse");
   void elements.sidebar.offsetWidth;
@@ -655,17 +635,6 @@ function bindEvents() {
 
   elements.clearFilterButton.addEventListener("click", () => {
     clearFilter();
-  });
-
-  elements.sourcesStatCard.addEventListener("mouseenter", showSourcesTooltip);
-  elements.sourcesStatCard.addEventListener("mouseleave", hideSourcesTooltip);
-  elements.sourcesStatCard.addEventListener("focusin", showSourcesTooltip);
-  elements.sourcesStatCard.addEventListener("focusout", hideSourcesTooltip);
-
-  window.addEventListener("resize", () => {
-    if (elements.sourcesTooltip.classList.contains("is-visible")) {
-      positionSourcesTooltip();
-    }
   });
 
   elements.modalCloseButton.addEventListener("click", closePromptModal);
