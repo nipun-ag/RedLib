@@ -1,6 +1,16 @@
 import { API_BASE_URL } from "./config.js";
 
 const STORAGE_KEY = "redlib.researchGateAcknowledged";
+const CATEGORY_COUNTS = {
+  "Role-Based Task Framing": 30876,
+  "Fictional / Hypothetical Framing": 55707,
+  "Authority or Legitimacy Spoofing": 4788,
+  "Obfuscation / Encoding": 2225,
+  "Simulation or Sandbox Framing": 34585,
+  "Dual-Response or Comparative Framing": 2574,
+  "Legitimate Context or Research Framing": 23310,
+  "Contextual Reframing or Euphemism": 14050,
+};
 const CATEGORY_NAMES = [
   "Role-Based Task Framing",
   "Fictional / Hypothetical Framing",
@@ -20,7 +30,8 @@ const state = {
   mode: "search",
   query: "",
   activeCategory: "",
-  categories: CATEGORY_NAMES.map((name) => ({ name, count: null })),
+  categories: CATEGORY_NAMES.map((name) => ({ name, count: CATEGORY_COUNTS[name] })),
+  categoriesAnimated: false,
   stats: null,
   searchResults: [],
   searchSummary: "",
@@ -181,7 +192,7 @@ function renderCategories() {
       count.textContent = "—";
       count.classList.add("skeleton-badge");
     } else {
-      count.textContent = formatNumber(category.count);
+      count.textContent = state.categoriesAnimated ? formatNumber(category.count) : "0";
     }
 
     button.append(name, count);
@@ -193,34 +204,20 @@ function renderCategories() {
   });
 }
 
-async function loadCategories() {
+function loadCategories() {
   renderCategories();
+  window.setTimeout(() => {
+    Array.from(elements.techniqueList.querySelectorAll(".technique-button")).forEach((button, index) => {
+      const countNode = button.querySelector(".technique-count");
+      const category = state.categories[index];
 
-  try {
-    const data = await fetchJson("/api/categories");
-    const categoryMap = new Map((data.categories || []).map((item) => [item.name, item.count]));
+      if (countNode && category && typeof category.count === "number") {
+        animateNumber(countNode, category.count, 1000);
+      }
+    });
 
-    state.categories = CATEGORY_NAMES.map((name) => ({
-      name,
-      count: categoryMap.has(name) ? categoryMap.get(name) : 0,
-    }));
-
-    renderCategories();
-
-    window.setTimeout(() => {
-      Array.from(elements.techniqueList.querySelectorAll(".technique-button")).forEach((button, index) => {
-        const countNode = button.querySelector(".technique-count");
-        const category = state.categories[index];
-
-        if (countNode && category && typeof category.count === "number") {
-          animateNumber(countNode, category.count, 1000);
-        }
-      });
-    }, 0);
-  } catch {
-    state.categories = CATEGORY_NAMES.map((name) => ({ name, count: null }));
-    renderCategories();
-  }
+    state.categoriesAnimated = true;
+  }, 0);
 }
 
 function updateModeButtons() {
