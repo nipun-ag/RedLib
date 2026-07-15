@@ -105,6 +105,10 @@ redlib/
   in `api/rag.py`
 - Comments explain WHY a decision was made, not what the code does
 - Frontend is implemented as static HTML/CSS/JS with no build step
+- Keep shared dependencies pinned in `requirements.txt` when a version
+  is already verified across local and production environments;
+  `fastembed==0.8.0` is the confirmed cross-platform baseline for
+  Windows/Python 3.13 and Ubuntu/Python 3.12
 
 ## Pipeline Stages
 Read before touching any retrieval file:
@@ -243,6 +247,9 @@ Phase 1 - In Development
 - `corpus/classify_corpus.py` is implemented as a corpus-wide taxonomy application stage that produces the final `data/corpus/classified.jsonl` corpus with subtechniques removed and preserves `data/corpus/classified_with_subtechniques.jsonl` as an archive copy
 - `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
 - Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
+- `requirements.txt` now pins `fastembed==0.8.0`, the same verified
+  version used successfully in both local Windows development and the
+  Hetzner production server on Python 3.12 Linux
 - Frontend assets are implemented under `frontend/`
 - `frontend/index.html` now renders the responsible-use gate with local-storage acknowledgment persistence
 - `frontend/search.html` now renders the main research interface with a glass sidebar, live stats bar, search/browse mode controls, and result panels

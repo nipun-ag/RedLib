@@ -11,4 +11,4 @@ tiktoken
 fastapi
 uvicorn
 
-fastembed
+fastembed==0.8.0

@@ -1,5 +1,44 @@
 ﻿# RedLib — Progress Log
 
+## 2026-07-16
+Resolved two production deployment issues around environment parity and
+dependency assumptions.
+
+Issue:
+- The `prd` Doppler config still pointed at the wrong Qdrant cluster
+  after a bulk import from parent `dev`, even though the correct
+  overridden values were already living in the `dev_personal` branch.
+- Production had also been carrying an untracked manual workaround that
+  excluded `fastembed` through a separate server-only requirements file
+  based on the assumption that FastEmbed could not run on Python 3.12
+  Linux.
+
+Change:
+- Reconciled the correct Qdrant override back into parent `dev` and set
+  the explicit correct Qdrant values directly in `prd`, removing the
+  stale inherited cluster configuration.
+- Pinned `fastembed==0.8.0` directly in `requirements.txt` after
+  verifying that the same version installs and runs cleanly on both the
+  local Windows/Python 3.13 environment and the Ubuntu/Python 3.12
+  Hetzner server with prebuilt wheels.
+- Updated `AGENTS.md` so contributor guidance now reflects the shared
+  pinned dependency baseline instead of any server-specific workaround.
+
+Why this was needed:
+- The production environment must point at the intended Qdrant cluster,
+  and that source-of-truth configuration needs to live in the tracked
+  Doppler workflow rather than a stale inherited import.
+- Dependency management should stay unified in tracked project files
+  once cross-platform compatibility is verified, rather than relying on
+  untracked server-only exceptions.
+
+Verification:
+- Confirmed `requirements.txt` now contains `fastembed==0.8.0`
+- Confirmed `AGENTS.md` contains no fastembed exclusion guidance or
+  reference to a server-specific requirements file
+
+---
+
 ## 2026-07-15
 Rebuilt the frontend as a pure static HTML/CSS/JS experience from the
 provided Stitch design references, replacing the removed React/Vite
