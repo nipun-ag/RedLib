@@ -219,7 +219,7 @@ button {
   align-items: center;
   gap: 10px;
   margin-bottom: 48px;
-  color: #c0392b;
+  color: #e50914;
   font-weight: 700;
   letter-spacing: 0.35em;
 }
@@ -510,7 +510,7 @@ button {
 }
 
 .workspace-wordmark {
-  color: #c0392b;
+  color: #e50914;
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;

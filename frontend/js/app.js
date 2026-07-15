@@ -1,6 +1,8 @@
 import { API_BASE_URL } from "./config.js";
 
 const STORAGE_KEY = "redlib.researchGateAcknowledged";
+const SEARCH_EXPLAINER_BASE =
+  "Search finds the most relevant prompts using AI, then summarizes what it found.";
 const CATEGORY_COUNTS = {
   "Role-Based Task Framing": 30876,
   "Fictional / Hypothetical Framing": 55707,
@@ -54,6 +56,7 @@ const state = {
   searchResults: [],
   searchSummary: "",
   searchCount: 0,
+  hasSearched: false,
   browseResults: [],
   browseTotal: 0,
   browseLoaded: false,
@@ -255,8 +258,9 @@ function updateModeButtons() {
 
 function updateExplainer() {
   if (state.mode === "search") {
-    elements.modeExplainer.textContent =
-      `Search finds the most relevant prompts using AI, then summarizes what it found. ${state.searchCount} prompts searched.`;
+    elements.modeExplainer.textContent = state.hasSearched
+      ? `${SEARCH_EXPLAINER_BASE} ${state.searchCount} prompts searched.`
+      : SEARCH_EXPLAINER_BASE;
     return;
   }
 
@@ -364,11 +368,7 @@ function renderResultsLoading(includeSummarySkeleton = false) {
 
 function renderSearchResults() {
   elements.resultsArea.textContent = "";
-
-  if (!state.searchSummary && state.searchResults.length === 0) {
-    elements.resultsArea.appendChild(
-      createStatusMessage("Run a search to inspect grounded prompt excerpts."),
-    );
+  if (!state.hasSearched) {
     return;
   }
 
@@ -386,13 +386,6 @@ function renderSearchResults() {
   summary.append(summaryTitle, summaryCopy);
   elements.resultsArea.appendChild(summary);
 
-  if (state.searchResults.length === 0) {
-    elements.resultsArea.appendChild(
-      createStatusMessage("No matching prompts were returned for this search."),
-    );
-    return;
-  }
-
   state.searchResults.forEach((result) => {
     elements.resultsArea.appendChild(createResultCard(result, true));
   });
@@ -400,18 +393,7 @@ function renderSearchResults() {
 
 function renderBrowseResults() {
   elements.resultsArea.textContent = "";
-
-  if (!state.activeCategory) {
-    elements.resultsArea.appendChild(
-      createStatusMessage("Select a technique from the sidebar to browse its prompts."),
-    );
-    return;
-  }
-
-  if (state.browseResults.length === 0) {
-    elements.resultsArea.appendChild(
-      createStatusMessage("No prompts are available for the selected technique."),
-    );
+  if (!state.activeCategory || state.browseResults.length === 0) {
     return;
   }
 
@@ -496,7 +478,9 @@ async function runSearch() {
 
   state.query = query;
   state.mode = "search";
+  state.hasSearched = false;
   updateModeButtons();
+  updateExplainer();
   renderResultsLoading(true);
 
   try {
@@ -511,6 +495,7 @@ async function runSearch() {
     state.searchSummary = data.answer || "";
     state.searchResults = data.results || [];
     state.searchCount = typeof data.result_count === "number" ? data.result_count : state.searchResults.length;
+    state.hasSearched = true;
     renderMode();
   } catch (error) {
     elements.resultsArea.textContent = "";
@@ -588,6 +573,7 @@ async function handleCategorySelection(categoryName) {
   state.searchSummary = "";
   state.searchResults = [];
   state.searchCount = 0;
+  state.hasSearched = false;
   renderMode();
   renderResultsLoading(false);
   await runBrowse(categoryName);
@@ -604,6 +590,7 @@ function clearFilter() {
   state.searchSummary = "";
   state.searchResults = [];
   state.searchCount = 0;
+  state.hasSearched = false;
   renderCategories();
   updateExplainer();
   renderMode();
