@@ -467,16 +467,24 @@ function setMode(mode) {
 function triggerBrowseAttention() {
   const items = elements.sidebar.querySelectorAll(".technique-item");
   items.forEach((item) => {
-    item.classList.remove("browse-pulse");
+    item.classList.remove("technique-pulse-active");
+  });
+  void elements.sidebar.offsetWidth;
+
+  items.forEach((item) => {
+    item.classList.add("technique-pulse-active");
   });
 
-  items.forEach((item, index) => {
-    window.setTimeout(() => {
-      item.classList.add("browse-pulse");
-      window.setTimeout(() => {
-        item.classList.remove("browse-pulse");
-      }, 300);
-    }, index * 150);
+  window.setTimeout(() => {
+    items.forEach((item) => {
+      item.classList.remove("technique-pulse-active");
+    });
+  }, 1800);
+}
+
+function clearBrowseAttention() {
+  elements.sidebar.querySelectorAll(".technique-item").forEach((item) => {
+    item.classList.remove("technique-pulse-active");
   });
 }
 
@@ -561,6 +569,7 @@ async function loadMoreBrowseResults(button) {
 }
 
 async function handleCategorySelection(categoryName) {
+  clearBrowseAttention();
   state.activeCategory = categoryName;
   renderCategories();
   renderMode();
@@ -585,6 +594,7 @@ async function handleCategorySelection(categoryName) {
 }
 
 function clearFilter() {
+  clearBrowseAttention();
   state.activeCategory = "";
   state.browseResults = [];
   state.browseCursor = null;
