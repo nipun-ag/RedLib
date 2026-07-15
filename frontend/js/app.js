@@ -56,6 +56,8 @@ const state = {
   searchCount: 0,
   browseResults: [],
   browseTotal: 0,
+  browseLoaded: false,
+  browseLoading: false,
   browseCursor: null,
   modalOpen: false,
 };
@@ -264,7 +266,12 @@ function updateExplainer() {
     return;
   }
 
-  const count = typeof state.browseTotal === "number" ? formatNumber(state.browseTotal) : "0";
+  if (state.browseLoading || !state.browseLoaded) {
+    elements.modeExplainer.textContent = `Browsing ${state.activeCategory}...`;
+    return;
+  }
+
+  const count = typeof state.browseTotal === "number" ? formatNumber(state.browseTotal) : "—";
   elements.modeExplainer.textContent =
     `Browsing all ${count} prompts tagged as ${state.activeCategory}. No AI involved, just the raw corpus.`;
 }
@@ -498,6 +505,10 @@ async function runSearch() {
 
 async function runBrowse(categoryName, cursor = null, append = false) {
   state.mode = "browse";
+  if (!append) {
+    state.browseLoading = true;
+    state.browseLoaded = false;
+  }
   updateModeButtons();
   updateExplainer();
 
@@ -518,11 +529,15 @@ async function runBrowse(categoryName, cursor = null, append = false) {
     const data = await fetchJson(`/api/browse?${query.toString()}`);
     state.browseTotal = data.total;
     state.browseCursor = data.next_cursor || null;
+    state.browseLoading = false;
+    state.browseLoaded = true;
     state.browseResults = append
       ? [...state.browseResults, ...(data.results || [])]
       : (data.results || []);
     renderMode();
   } catch (error) {
+    state.browseLoading = false;
+    updateExplainer();
     elements.resultsArea.textContent = "";
     elements.resultsArea.appendChild(createStatusMessage(error.message, true));
   }
@@ -541,15 +556,24 @@ async function loadMoreBrowseResults(button) {
 async function handleCategorySelection(categoryName) {
   state.activeCategory = categoryName;
   renderCategories();
+  renderMode();
 
   if (elements.searchInput.value.trim()) {
     await runSearch();
     return;
   }
 
+  state.mode = "browse";
+  state.browseLoading = true;
+  state.browseLoaded = false;
+  state.browseTotal = 0;
+  state.browseResults = [];
+  state.browseCursor = null;
   state.searchSummary = "";
   state.searchResults = [];
   state.searchCount = 0;
+  renderMode();
+  renderResultsLoading(false);
   await runBrowse(categoryName);
 }
 
@@ -558,6 +582,8 @@ function clearFilter() {
   state.browseResults = [];
   state.browseCursor = null;
   state.browseTotal = 0;
+  state.browseLoaded = false;
+  state.browseLoading = false;
   state.searchSummary = "";
   state.searchResults = [];
   state.searchCount = 0;
