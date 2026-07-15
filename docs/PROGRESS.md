@@ -2627,48 +2627,38 @@ Verification:
 
 ---
 ## 2026-07-15
-Built the complete React frontend in `frontend/src/` around a
-research-grade, hard-edged interface that matches the live RedLib API
-contracts and workflow.
+Polished the existing React frontend without changing the underlying app
+structure or API wiring.
 
 Issue:
-- The Vite frontend still rendered only a placeholder shell and did not
-  implement the responsible-use gate, taxonomy filters, semantic search,
-  browse pagination, lazy prompt inspection, live corpus stats, or the
-  required mode-aware explanation layer.
-- The React app also did not yet support the required `@/config` import
-  path for `API_BASE_URL`.
+- The first React pass still carried too much explanatory copy, an
+  oversized header footprint, weak typographic contrast, and muted
+  surface hierarchy.
+- Loading, empty, and error states also read as more broken or verbose
+  than they should for a research-facing interface.
 
 Change:
-- Replaced the placeholder React app with a full workspace under
-  `frontend/src/` using the requested structure:
-  `pages/`, `components/`, `hooks/`, and `lib/`.
-- Added a responsible-use gate backed by session storage before the main
-  app shell renders.
-- Added live category loading from `GET /api/categories` with count-up
-  animation and category filter selection.
-- Added semantic search via `POST /api/query`, including AI summary,
-  excerpt-only result cards, confidence signals, and technique
-  breakdown.
-- Added raw corpus browse mode via `GET /api/browse` with category-first
-  loading and cursor-based `Load More` pagination.
-- Added lazy full-prompt inspection via `GET /api/prompts/{id}` behind
-  the explicit `View Full Prompt` action.
-- Added corpus stats hydration from `GET /api/stats`.
-- Replaced the visual baseline with a documented dark editorial-tactical
-  design system in `frontend/src/index.css`, enforcing zero rounded
-  corners across the entire UI.
-- Added `frontend/jsconfig.json` and updated `frontend/vite.config.js`
-  so `@/config` resolves correctly in the Vite app.
-- Rewrote `docs/DESIGN.md` to describe the shipped React design system.
+- Reduced workspace copy aggressively across the header, sidebar, mode
+  explainer, empty states, modal footer, and session panels.
+- Tightened the top-of-page layout so users reach the query interface
+  faster.
+- Reworked the typography system around:
+  - `Bahnschrift`-led display text
+  - `Aptos`/`Segoe UI`-led body text
+  - `IBM Plex Mono` for data labels and counts
+- Increased visual hierarchy by strengthening surface separation,
+  bringing the accent and signal colors forward, and giving active tags,
+  filters, and summary areas more presence.
+- Softened loading and failure language so stats and request states feel
+  calm and intentional instead of broken.
+- Updated `docs/DESIGN.md` to reflect the refined type, copy, layout,
+  and color system.
 
 Why this was needed:
-- RedLib's frontend needs to support two distinct research workflows in
-  one coherent operational surface: semantic analysis and direct corpus
-  inspection.
-- The UI also needs to reflect the product's trust-and-safety audience
-  with a more deliberate, source-grounded visual language than a generic
-  app scaffold.
+- RedLib users already understand the domain and need a faster, more
+  exacting interface rather than embedded product explanation.
+- The polish pass brings the interface closer to a purpose-built
+  research instrument instead of a newly scaffolded app shell.
 
 Verification:
 - `npm.cmd run build`

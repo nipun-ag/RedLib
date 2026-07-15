@@ -33,23 +33,22 @@ export function QueryWorkbench({
 
         <div className="mode-meta mono">
           {isSearch
-            ? `${resultCount || 0} current semantic results`
+            ? `${resultCount || 0} results`
             : activeCategory
-              ? `${resultCount || 0} prompts in category`
-              : "category selection required"}
+              ? `${resultCount || 0} in category`
+              : "choose a category"}
         </div>
       </section>
 
       <section className="query-bar">
         {isSearch ? (
           <div className="query-stack">
-            <div className="eyebrow mono">Semantic Search</div>
             <div className="search-form">
               <input
                 type="text"
                 className="search-input"
                 value={searchDraft}
-                placeholder="Describe a jailbreak mechanism, framing pattern, or scenario cluster"
+                placeholder="Search a mechanism, framing pattern, or scenario"
                 onChange={(event) => onSearchDraftChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -71,12 +70,10 @@ export function QueryWorkbench({
               <span className="signal-chip mono">
                 {activeCategory ? `Filter ${activeCategory}` : "All Techniques"}
               </span>
-              <span>AI summary stays under the excerpt cards and never renders a full prompt body.</span>
             </div>
           </div>
         ) : (
           <div className="query-stack">
-            <div className="eyebrow mono">Raw Corpus Browse</div>
             <div className="browse-controls">
               <button
                 type="button"
@@ -89,9 +86,6 @@ export function QueryWorkbench({
               <span className="signal-chip mono">
                 {activeCategory ? `Category ${activeCategory}` : "Pick a Category"}
               </span>
-            </div>
-            <div className="query-subline">
-              <span>Browse Mode paginates the raw corpus directly and omits the answer synthesis layer.</span>
             </div>
           </div>
         )}

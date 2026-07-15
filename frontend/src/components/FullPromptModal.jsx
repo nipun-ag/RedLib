@@ -33,10 +33,7 @@ export function FullPromptModal({ isOpen, loading, error, prompt, onClose }) {
           ) : null}
         </div>
 
-        <div className="footer-note mono">
-          Prompt text is rendered as plain text only. Search result cards remain excerpt-based by
-          design.
-        </div>
+        <div className="footer-note mono">Plain-text prompt view.</div>
       </div>
     </div>
   )

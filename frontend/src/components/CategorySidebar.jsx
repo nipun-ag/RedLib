@@ -13,21 +13,24 @@ export function CategorySidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
-        <div className="brand-line">
+        <div className="sidebar-header">
           <div className="eyebrow mono">Technique Filters</div>
-          <button type="button" className="button-ghost sidebar-toggle mono" onClick={onToggleSidebar}>
+          <button
+            type="button"
+            className="button-ghost sidebar-toggle mono"
+            onClick={onToggleSidebar}
+          >
             {sidebarOpen ? "Hide Filters" : "Show Filters"}
           </button>
         </div>
-        <p className="sidebar-copy">
-          Approved taxonomy filters stay live against the indexed corpus. Counts are fetched from the
-          backend and animate in as the category rail hydrates.
-        </p>
+        <div className="sidebar-status mono">
+          {activeCategory ? activeCategory : loading ? "Loading counts" : "All techniques"}
+        </div>
       </div>
 
       <div className={`sidebar-panel${sidebarOpen ? "" : " is-collapsed"}`}>
         <div className="sidebar-section">
-          {error ? <div className="status-note">{error}</div> : null}
+          {error ? <div className="status-note">{mode === "search" ? "Counts paused" : "Filters paused"}</div> : null}
 
           <div className="category-list">
             {categories.map((category) => {
@@ -50,12 +53,6 @@ export function CategorySidebar({
                 </button>
               )
             })}
-          </div>
-
-          <div className="sidebar-note">
-            {mode === "search"
-              ? "In Search Mode, the selected category constrains semantic retrieval before synthesis."
-              : "In Browse Mode, selecting a category opens a deterministic raw corpus stream for that technique."}
           </div>
         </div>
       </div>

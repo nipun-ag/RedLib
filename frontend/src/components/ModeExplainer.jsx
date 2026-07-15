@@ -1,12 +1,8 @@
-export function ModeExplainer({ title, body, meta }) {
+export function ModeExplainer({ message }) {
   return (
     <section className="explainer-bar" aria-label="mode explainer">
-      <div>
-        <div className="eyebrow mono">Mode Explainer</div>
-        <h2 className="result-technique">{title}</h2>
-        <div className="explainer-copy">{body}</div>
-      </div>
-      <div className="explainer-meta mono">{meta}</div>
+      <div className="eyebrow mono">Mode</div>
+      <div className="explainer-copy">{message}</div>
     </section>
   )
 }

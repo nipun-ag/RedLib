@@ -17,12 +17,7 @@ import { useResponsibleGate } from "@/hooks/useResponsibleGate"
 import { useSearch } from "@/hooks/useSearch"
 import { useStats } from "@/hooks/useStats"
 
-const INITIAL_EXPLAINER = {
-  title: "Research Modes",
-  body:
-    "Semantic Search synthesizes retrieved prompt clusters into an analytical summary. Browse Mode skips synthesis and exposes raw corpus slices directly from the approved taxonomy.",
-  meta: "Search keeps the prompt body excerpted. Full prompt text is loaded only after explicit review action.",
-}
+const INITIAL_EXPLAINER = "Search returns a short grounded summary above the excerpt cards."
 
 export function ResearchPage() {
   const { accepted, accept } = useResponsibleGate()
@@ -47,14 +42,9 @@ export function ResearchPage() {
       setExplainer(
         nextMode === "search"
           ? INITIAL_EXPLAINER
-          : {
-              title: "Direct Corpus Browsing",
-              body:
-                "Browse Mode uses Qdrant scroll pagination on one approved category at a time. No reranking, no synthesis, and no inferred answer layer are added.",
-              meta: activeCategory
-                ? `Now inspecting ${activeCategory}. Load More continues the same category cursor.`
-                : "Choose a technique category to open a deterministic raw-prompt stream.",
-            }
+          : activeCategory
+            ? `${activeCategory} is open in raw browse mode.`
+            : "Browse shows raw prompt excerpts one category at a time."
       )
     })
   }
@@ -62,17 +52,11 @@ export function ResearchPage() {
   const handleCategorySelect = (categoryName) => {
     startTransition(() => {
       setActiveCategory(categoryName)
-      setExplainer({
-        title: categoryName,
-        body:
-          mode === "search"
-            ? "The category filter constrains semantic retrieval on technique metadata before answer synthesis runs."
-            : "Browse Mode is now scoped to this technique family only. Results are raw excerpts from the stored corpus.",
-        meta:
-          mode === "search"
-            ? "Run a query to inspect how this mechanism appears across retrieved prompts."
-            : "Pagination remains inside this category until you switch filters.",
-      })
+      setExplainer(
+        mode === "search"
+          ? `${categoryName} is now the active search filter.`
+          : `${categoryName} is open in browse mode.`
+      )
       if (mode === "browse") {
         browse.loadFirstPage(categoryName)
       }
@@ -81,34 +65,19 @@ export function ResearchPage() {
 
   const handleSearchSubmit = async () => {
     if (!searchDraft.trim()) {
-      setExplainer({
-        title: "Search Input Needed",
-        body:
-          "Semantic Search expects a natural-language research query. Use a mechanism, scenario, or pattern description rather than a full prompt body.",
-        meta: "Example: cross-turn role framing with authority cues",
-      })
+      setExplainer("Enter a query to search the corpus.")
       return
     }
 
-    setExplainer({
-      title: "Semantic Retrieval In Flight",
-      body:
-        "RedLib is retrieving and reranking corpus-grounded prompt nodes, then synthesizing a short analytical summary from the returned set.",
-      meta: activeCategory
-        ? `Technique filter active: ${activeCategory}`
-        : "No category filter active. Retrieval can span the full approved taxonomy.",
-    })
+    setExplainer(activeCategory ? `Searching within ${activeCategory}.` : "Searching the corpus.")
 
     await search.runSearch(searchDraft, activeCategory || null)
 
-    setExplainer({
-      title: "Search Results Loaded",
-      body:
-        "Result cards stay excerpt-based to preserve controlled inspection. Confidence signals reflect retrieval score bands, not a model certainty claim about the prompt itself.",
-      meta: activeCategory
-        ? `Filtered to ${activeCategory}. Use View Full Prompt to inspect a source record on demand.`
-        : "Open a full prompt only when needed. The modal fetch remains separate from search retrieval.",
-    })
+    setExplainer(
+      activeCategory
+        ? `Showing search results for ${activeCategory}.`
+        : "Showing search results from the full corpus."
+    )
   }
 
   const visibleCategories = useMemo(
@@ -158,33 +127,44 @@ export function ResearchPage() {
               onBrowseRefresh={() => activeCategory && browse.loadFirstPage(activeCategory)}
             />
 
-            <ModeExplainer {...explainer} />
+            <ModeExplainer message={explainer} />
 
             <div className="results-layout">
               <div className="results-main">
                 {showSummary ? <SummaryPanel answer={search.data.answer} /> : null}
 
                 {currentError ? (
-                  <ErrorState title="Request Failed" message={currentError} />
+                  <ErrorState
+                    title="Request paused"
+                    message={
+                      currentError === "Failed to fetch"
+                        ? "The API is not reachable right now. Retry when the backend is available."
+                        : currentError
+                    }
+                  />
                 ) : null}
 
                 {!currentError && isBusy ? (
                   <EmptyState
-                    title="Loading Research View"
-                    message="RedLib is resolving the current request against the corpus."
+                    title={mode === "search" ? "Searching corpus" : "Loading category"}
+                    message={
+                      mode === "search"
+                        ? "Pulling excerpts and summary."
+                        : "Pulling the next browse slice."
+                    }
                     loading
                   />
                 ) : null}
 
                 {!currentError && !isBusy && resultItems.length === 0 ? (
                   <EmptyState
-                    title={mode === "search" ? "No Search Results Yet" : "Browse Stream Empty"}
+                    title={mode === "search" ? "No search results yet" : "Browse is ready"}
                     message={
                       mode === "search"
-                        ? "Run a semantic query to generate an answer summary and excerpt-based prompt cards."
+                        ? "Run a query to start."
                         : activeCategory
-                          ? "This category is selected, but no browse results are currently loaded."
-                          : "Choose a technique category to start raw corpus browsing."
+                          ? "Refresh to load this category."
+                          : "Choose a category to begin."
                     }
                   />
                 ) : null}
@@ -220,23 +200,20 @@ export function ResearchPage() {
                   <TechniqueBreakdown breakdown={search.data.technique_breakdown} />
                 ) : (
                   <div className="breakdown-panel">
-                    <div className="eyebrow mono">Inspection Rules</div>
-                    <div className="panel-copy">
-                      Search results never render full prompt text inline. Use the
-                      <span className="text-accent"> View Full Prompt</span> action only when you need
-                      explicit source inspection.
-                    </div>
+                    <div className="eyebrow mono">Technique Mix</div>
+                    <div className="panel-copy">Technique mix appears after a search.</div>
                   </div>
                 )}
 
                 <div className="breakdown-panel">
-                  <div className="eyebrow mono">Current State</div>
-                  <div className="panel-copy">
-                    {mode === "search"
-                      ? "Semantic Search returns an analytical answer, excerpt-based prompt cards, and a per-result technique mix from the retrieved set."
-                      : activeCategory
-                        ? `Browse Mode is paginating the ${activeCategory} category directly from the stored corpus.`
-                        : "Browse Mode is idle until a technique category is selected."}
+                  <div className="eyebrow mono">Session</div>
+                  <div className="session-list mono">
+                    <span>Mode</span>
+                    <strong>{mode === "search" ? "Search" : "Browse"}</strong>
+                    <span>Filter</span>
+                    <strong>{activeCategory || "All"}</strong>
+                    <span>Results</span>
+                    <strong>{resultCount || 0}</strong>
                   </div>
                 </div>
               </div>

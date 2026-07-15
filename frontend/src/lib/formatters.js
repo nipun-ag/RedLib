@@ -2,9 +2,13 @@ export function formatNumber(value) {
   return Number(value || 0).toLocaleString("en-US")
 }
 
-export function formatDateLabel(value) {
+export function formatDateLabel(value, { pending = false } = {}) {
+  if (pending) {
+    return "Sync pending"
+  }
+
   if (!value) {
-    return "Unavailable"
+    return "Sync pending"
   }
 
   const date = new Date(value)

@@ -5,124 +5,107 @@
 - Styling approach: Tailwind entrypoint plus custom CSS in
   `frontend/src/index.css`
 - API base URL source: `frontend/src/config.js` only
-- Layout model: responsible-use gate -> single research workspace ->
-  search or browse mode within the same shell
+- Layout model: responsible-use gate -> compact workspace header ->
+  shared search/browse workbench -> results and inspection panels
 
 ## Visual Direction
-- Theme: dark-only tactical editorial interface
-- Shape language: hard edges only, zero rounded corners anywhere
-- Surface behavior: layered steel-blue panels over a near-black field
-- Mood: operational, research-first, source-grounded, not consumer SaaS
-- Motion: restrained and functional
-  - category counts animate in with count-up motion
-  - buttons use short press feedback
-  - no decorative looping motion outside loading feedback
+- Theme: dark tactical editorial interface
+- Shape language: sharp corners everywhere
+- Surface hierarchy:
+  - `--bg` for the page field
+  - `--bg-raised` for the taxonomy rail
+  - `--bg-panel` and `--bg-panel-2` for active tool surfaces
+  - `--bg-panel-3` reserved for stronger emphasis states
+- Accent strategy:
+  - red draws attention to primary actions, active filters, and key
+    summary states
+  - blue signal color supports data chips and quieter interface cues
+- Copy strategy:
+  - minimal, operator-facing, and tool-oriented
+  - no long explanatory interface prose inside the workspace
 
-## Color System
-- `--bg`: `#090d11`
-- `--bg-raised`: `#10161c`
-- `--bg-panel`: `#131b22`
-- `--bg-panel-2`: `#18212a`
-- `--bg-panel-3`: `#202b35`
-- `--line`: `#2c3a46`
-- `--line-strong`: `#43576a`
-- `--text`: `#ebf0f4`
-- `--text-muted`: `#91a3b4`
-- `--text-dim`: `#6a7b8b`
+## Typography
+- Body stack:
+  - `Aptos`, `Segoe UI Variable Text`, `Segoe UI`, `Inter`, sans-serif
+- Display stack:
+  - `Bahnschrift`, `DIN Alternate`, `Arial Narrow`, `Inter`, sans-serif
+- Mono/data stack:
+  - `IBM Plex Mono`, `Consolas`, monospace
+
+Hierarchy rules:
+- Product title is short, uppercase, and compact rather than hero-sized
+- Technique names use the display stack for a more deliberate editorial
+  voice
+- Labels, mode toggles, stats, IDs, and counts use mono with tighter
+  uppercase tracking
+- Body copy stays muted and short
+
+## Layout Proportions
+- Header is intentionally compressed so users reach the tool quickly
+- Stats sit beside the title instead of below a long hero block
+- Sidebar opens directly into category filters with no narrative copy
+- Mode explainer is a single sentence only
+- Results remain the dominant visual surface
+
+## Component Behavior
+- Responsible-use gate remains in place
+- SEARCH MODE / BROWSE MODE toggle remains in place
+- Search mode:
+  - query input
+  - optional category filter
+  - AI summary above result cards
+  - technique mix in the side panel
+- Browse mode:
+  - category-first flow
+  - raw excerpt cards
+  - cursor pagination with `Load More`
+- Full prompt inspection:
+  - lazy modal only
+  - action label stays exactly `View Full Prompt`
+  - prompt text renders as plain text
+
+## State Design
+- Loading states use muted copy and a small blue pulse indicator
+- Stats never show harsh broken-language placeholders
+- Error states use calm connection language instead of alarming failure
+  language when possible
+- Empty states are short and directional
+
+## Color Tokens
+- `--bg`: `#091017`
+- `--bg-raised`: `#0f1922`
+- `--bg-panel`: `#15212b`
+- `--bg-panel-2`: `#1b2834`
+- `--bg-panel-3`: `#243342`
+- `--line`: `#304150`
+- `--line-strong`: `#486175`
+- `--text`: `#f2f5f7`
+- `--text-muted`: `#b2c0cb`
+- `--text-dim`: `#7f93a3`
 - `--accent`: `#f34b3f`
-- `--accent-soft`: `rgba(243, 75, 63, 0.12)`
-- `--accent-line`: `rgba(243, 75, 63, 0.32)`
-- `--signal`: `#9cc3ff`
-- `--signal-soft`: `rgba(156, 195, 255, 0.14)`
+- `--accent-soft`: `rgba(243, 75, 63, 0.16)`
+- `--accent-line`: `rgba(243, 75, 63, 0.42)`
+- `--signal`: `#a8cdff`
+- `--signal-soft`: `rgba(168, 205, 255, 0.16)`
 - `--ok`: `#9fe870`
 - `--warn`: `#ffd36c`
 - `--danger`: `#ff7b72`
 
-## Typography
-- Primary voice: modern sans serif stack led by `Inter`
-- Secondary/system voice: monospace stack led by `IBM Plex Mono`
-- Headline behavior:
-  - uppercase
-  - tight tracking
-  - short line lengths
-  - large editorial scale without oversized hero sprawl
-- Supporting copy behavior:
-  - muted blue-gray tone
-  - comfortable line height
-  - max-width control for long explanatory text
-- Numeric behavior:
-  - monospace
-  - tabular feel for counts, scores, and stats
-
-## Layout Structure
-- Responsible-use gate:
-  - split-screen composition
-  - left side explains corpus purpose
-  - right side sets access conditions and acknowledgement
-- Main app shell:
-  - header with product framing and corpus stats
-  - left taxonomy rail for technique filters
-  - right workbench for mode controls, query input, explainer, and results
-- Result area:
-  - primary column for summary and result cards
-  - secondary column for technique mix or inspection guidance
-- Full prompt inspection:
-  - modal overlay only
-  - loaded lazily after explicit action
-
-## Component Rules
-- Every result card must show source attribution
-- Search result cards only show `prompt_excerpt`, never full prompt text
-- Full prompt CTA label is exactly `View Full Prompt`
-- Prompt bodies render as plain text with preserved whitespace
-- Category counts stay live and animated from `/api/categories`
-- Mode explainer changes based on:
-  - idle search
-  - active search
-  - active browse
-  - category selection
-
-## Interaction Model
-- Search Mode:
-  - semantic query input
-  - optional technique filter from the left rail
-  - AI summary shown above excerpt cards
-  - technique breakdown shown in the side panel
-- Browse Mode:
-  - category-first workflow
-  - raw corpus excerpts only
-  - cursor pagination with `Load More`
-  - no answer synthesis panel
-- Responsible-use acknowledgement:
-  - session-scoped
-  - stored in browser session storage
-
 ## Motion Rules
-- Count-up animation duration: short, under one second
-- Press feedback: subtle scale-down only
-- Loading feedback: single pulsing square indicator
-- Reduced motion:
-  - all transitions collapse when `prefers-reduced-motion: reduce`
-  - no layout-dependent reveal sequences
+- Keep motion short and functional
+- Category counts still use count-up animation
+- Buttons keep subtle press feedback
+- Reduced motion disables transitions and animation globally
 
 ## Responsive Behavior
 - Desktop:
-  - two-column workspace with persistent taxonomy rail
+  - left taxonomy rail
+  - right workbench
+  - side analysis panel
 - Tablet:
-  - stacked content sections with the same visual language
+  - stacked content areas
+  - same typographic hierarchy
 - Mobile:
-  - taxonomy rail can collapse
-  - mode buttons and primary actions become full-width
-  - header stats stack vertically
-
-## File Ownership
-- `frontend/src/pages/ResearchPage.jsx`
-  - page orchestration and state handoff
-- `frontend/src/components/`
-  - reusable UI surfaces
-- `frontend/src/hooks/`
-  - API and interaction state
-- `frontend/src/lib/formatters.js`
-  - display helpers
-- `frontend/src/index.css`
-  - visual system, layout, and interaction styling
+  - collapsible filter rail
+  - full-width primary controls
+  - compact header and tool rhythm preserved

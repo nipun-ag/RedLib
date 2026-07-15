@@ -20,11 +20,7 @@ export function ResponsibleUseGate({ onAccept }) {
           <section className="gate-copy">
             <div className="eyebrow mono">Responsible Use Gate</div>
             <h1 className="headline">Real jailbreak prompts for research and defense.</h1>
-            <p className="lede">
-              RedLib is a research environment for trust and safety practitioners, red teamers, and
-              security researchers studying real adversarial prompt behavior across a classified
-              corpus.
-            </p>
+            <p className="lede">Research interface for adversarial prompt analysis.</p>
 
             <div className="gate-facts">
               <div className="gate-fact">
@@ -47,8 +43,7 @@ export function ResponsibleUseGate({ onAccept }) {
             <ul>
               <li>Use the corpus for defensive analysis, evaluation, or safety research only.</li>
               <li>Do not treat RedLib as an execution guide or a source of operational jailbreak instructions.</li>
-              <li>Search results stay excerpt-based by default. Full prompt text requires explicit inspection.</li>
-              <li>Source attribution is preserved so records remain auditable and reviewable.</li>
+              <li>Full prompt text appears only after explicit inspection.</li>
             </ul>
 
             <div className="gate-ack">
@@ -73,7 +68,7 @@ export function ResponsibleUseGate({ onAccept }) {
                 <button type="button" className="button-primary mono" onClick={handleContinue}>
                   Enter Research Workspace
                 </button>
-                <div className="text-dim mono">Session acknowledgment is stored locally in this browser.</div>
+                <div className="text-dim mono">Session acknowledgment is stored locally.</div>
               </div>
               {showError ? <div className="status-note">You must confirm the responsible-use statement before continuing.</div> : null}
             </div>
