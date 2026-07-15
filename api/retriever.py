@@ -58,6 +58,8 @@ def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
     Returns:
         Configured QueryFusionRetriever
     """
+    candidate_top_k = max(top_k, 20)
+
     # Get vector store (Qdrant Cloud with hybrid search)
     vector_store = get_vector_store()
 
@@ -71,30 +73,30 @@ def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
 
     # Create dense retriever
     dense_retriever = VectorIndexRetriever(
-        index=index_obj, similarity_top_k=top_k
+        index=index_obj, similarity_top_k=candidate_top_k
     )
 
     # Create sparse retriever through the index for LlamaIndex 0.14.22 compatibility.
     sparse_retriever = index_obj.as_retriever(
-        similarity_top_k=top_k,
+        similarity_top_k=candidate_top_k,
         vector_store_query_mode="sparse",
-        sparse_top_k=top_k,
+        sparse_top_k=candidate_top_k,
     )
 
     # Combine into QueryFusionRetriever with RRF
     retriever = QueryFusionRetriever(
         retrievers=[dense_retriever, sparse_retriever],
         mode="reciprocal_rerank",
-        similarity_top_k=top_k,
+        similarity_top_k=candidate_top_k,
         num_queries=1,
         use_async=False,
     )
 
-    logger.info(f"QueryFusionRetriever configured with top_k={top_k}")
+    logger.info(f"QueryFusionRetriever configured with top_k={candidate_top_k}")
     return retriever
 
 
-def get_reranker(top_n: int = 5) -> Any:
+def get_reranker(top_n: int = 10) -> Any:
     """Configure Cohere reranker postprocessor.
 
     Args:

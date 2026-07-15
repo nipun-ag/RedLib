@@ -1,8 +1,10 @@
 import { API_BASE_URL } from "./config.js";
 
 const STORAGE_KEY = "redlib.researchGateAcknowledged";
-const SEARCH_EXPLAINER_BASE =
-  "Search finds the most relevant prompts using AI, then summarizes what it found.";
+const SEARCH_EXPLAINER_IDLE =
+  "Enter a word, phrase, or concept and RedLib will find the most relevant prompts using vector search across 168,115 classified records.";
+const SEARCH_EXPLAINER_ACTIVE =
+  "Vector search across 168,115 classified records.";
 const CATEGORY_COUNTS = {
   "Role-Based Task Framing": 30876,
   "Fictional / Hypothetical Framing": 55707,
@@ -259,14 +261,14 @@ function updateModeButtons() {
 function updateExplainer() {
   if (state.mode === "search") {
     elements.modeExplainer.textContent = state.hasSearched
-      ? `${SEARCH_EXPLAINER_BASE} ${state.searchCount} prompts searched.`
-      : SEARCH_EXPLAINER_BASE;
+      ? SEARCH_EXPLAINER_ACTIVE
+      : SEARCH_EXPLAINER_IDLE;
     return;
   }
 
   if (!state.activeCategory) {
     elements.modeExplainer.textContent =
-      "Choose a technique to browse the raw corpus. No AI involved, just the raw corpus.";
+      "Select a technique category from the sidebar to scroll through raw corpus records.";
     return;
   }
 
@@ -276,8 +278,7 @@ function updateExplainer() {
   }
 
   const count = typeof state.browseTotal === "number" ? formatNumber(state.browseTotal) : "—";
-  elements.modeExplainer.textContent =
-    `Browsing all ${count} prompts tagged as ${state.activeCategory}. No AI involved, just the raw corpus.`;
+  elements.modeExplainer.textContent = `Browsing ${count} records classified as ${state.activeCategory}.`;
 }
 
 function createStatusMessage(text, isError = false) {
