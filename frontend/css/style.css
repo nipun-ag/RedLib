@@ -404,6 +404,11 @@ button {
 
 .gate-button {
   width: 100%;
+  background: #c0392b;
+}
+
+.gate-button:hover:not(:disabled) {
+  background: #a93226;
 }
 
 .button-arrow {
