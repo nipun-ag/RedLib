@@ -460,17 +460,12 @@ function setMode(mode) {
 }
 
 function positionSourcesTooltip() {
-  const cardRect = elements.sourcesStatCard.getBoundingClientRect();
-  const tooltipRect = elements.sourcesTooltip.getBoundingClientRect();
-  const viewportPadding = 16;
-  const desiredTop = cardRect.bottom + 12;
-  const maxTop = window.innerHeight - tooltipRect.height - viewportPadding;
-  const top = Math.max(viewportPadding, Math.min(desiredTop, maxTop));
-  const maxLeft = window.innerWidth - tooltipRect.width - viewportPadding;
-  const left = Math.max(viewportPadding, Math.min(cardRect.left, maxLeft));
-
-  elements.sourcesTooltip.style.top = `${top}px`;
-  elements.sourcesTooltip.style.left = `${left}px`;
+  const rect = elements.sourcesStatCard.getBoundingClientRect();
+  elements.sourcesTooltip.style.top = `${rect.bottom + 8}px`;
+  elements.sourcesTooltip.style.left = `${Math.min(
+    rect.left,
+    window.innerWidth - elements.sourcesTooltip.offsetWidth - 16,
+  )}px`;
 }
 
 function showSourcesTooltip() {
