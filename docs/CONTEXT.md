@@ -41,7 +41,8 @@ The synthesizer DOES:
 - Name relevant RedLib technique categories
 - Describe shared mechanics at the category level
 - Note dataset distribution or confidence signals when useful
-- State directly when results are low relevance
+- Connect observed prompt patterns to the nearest approved RedLib category when applicable
+- Treat returned results as relevant and describe the common pattern they show
 
 ---
 
@@ -66,10 +67,8 @@ These rules are implemented directly in `api/synthesizer.py`:
 - No hedging phrases such as "it seems," "possibly," "might," or "could be"
 - No marketing language, enthusiasm, or sales tone
 - No apologies or disclaimer language in the answer body
-- Aim for 2-3 short paragraphs
-
-If results are weak or off-topic, say so directly instead of smoothing
-over the problem.
+- Keep answers under 100 words
+- Prefer one short analytical paragraph
 
 ---
 
@@ -77,17 +76,18 @@ over the problem.
 The current system prompt instructs Haiku to answer corpus-grounded queries in
 this structure:
 
-1. Lead sentence naming the dominant technique or pattern
-2. Body describing what the retrieved prompts have in common
-3. Optional note about dataset distribution or confidence signals
+1. Lead sentence describing what the returned prompts have in common relative to the user's query
+2. Body describing the shared framing or mechanics visible in the retrieved prompts
+3. Where supported, a connection to the nearest approved RedLib technique category
 
 The answer should describe technique mechanics at the category level and
 must not reproduce the prompts themselves.
 
 Example of correct tone:
-"Persona Hijacking remains the most prevalent technique in this result
-set. The retrieved prompts establish fictional authority hierarchies to
-convince the model it is operating outside normal constraints."
+"The returned prompts use supernatural or fictional-entity framing to
+establish an alternate persona and narrative context. This pattern maps
+most closely to Fictional / Hypothetical Framing, with some overlap into
+Role-Based Task Framing when the entity is treated as an acting persona."
 
 Example of incorrect tone:
 "Great question. These prompts are really creative and could be useful
@@ -101,10 +101,11 @@ The current `SYSTEM_PROMPT` explicitly enforces these constraints:
 1. Never reproduce the full text of any retrieved prompt
 2. Never provide step-by-step instructions derived from the prompts
 3. Never describe techniques at the execution level
-4. Never fabricate an answer when results are off-topic
+4. Never evaluate query quality or suggest rephrasing
 5. Ground every claim in retrieved results
-6. Keep semantic-query answers under 150 words
-7. Keep conceptual answers under 100 words
+6. Treat returned results as relevant and describe their shared pattern
+7. Keep semantic-query answers under 100 words
+8. Keep conceptual answers under 100 words
 
 ---
 
@@ -138,11 +139,13 @@ content rather than `metadata["text"]`.
 
 ---
 
-## Low-Relevance Behavior
-If retrieved results are off-topic, low-confidence, or do not match the
-query closely, the current prompt instructs the model to say that
-directly. It may suggest rephrasing the query, but it should not invent
-an answer to fill the gap.
+## Retrieved-Pattern Behavior
+If retrieved results are returned, the prompt now instructs the model to
+describe what those prompts have in common relative to the user's query.
+It should not judge whether the query was well-formed, call results
+low-relevance, or suggest rephrasing. When the pattern does not map
+cleanly to one approved category, it should describe the pattern
+directly and connect it to the nearest category variant where justified.
 
 ---
 
