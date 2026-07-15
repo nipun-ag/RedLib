@@ -91,12 +91,16 @@ function formatDate(value) {
 }
 
 async function fetchJson(path, options = {}) {
+  // Avoid attaching Content-Type on bodyless GETs so browsers can skip CORS preflight.
+  const { headers: optionHeaders, ...restOptions } = options;
+  const headers = { ...(optionHeaders || {}) };
+  if (restOptions.body !== undefined) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
+    ...restOptions,
+    headers,
   });
 
   if (!response.ok) {
@@ -235,10 +239,15 @@ function updateExplainer() {
     return;
   }
 
-  const category = state.activeCategory || "the selected category";
+  if (!state.activeCategory) {
+    elements.modeExplainer.textContent =
+      "Choose a technique to browse the raw corpus. No AI involved, just the raw corpus.";
+    return;
+  }
+
   const count = typeof state.browseTotal === "number" ? formatNumber(state.browseTotal) : "0";
   elements.modeExplainer.textContent =
-    `Browsing all ${count} prompts tagged as ${category}. No AI involved, just the raw corpus.`;
+    `Browsing all ${count} prompts tagged as ${state.activeCategory}. No AI involved, just the raw corpus.`;
 }
 
 function createStatusMessage(text, isError = false) {
@@ -447,6 +456,7 @@ async function runSearch() {
 async function runBrowse(categoryName, cursor = null, append = false) {
   state.mode = "browse";
   updateModeButtons();
+  updateExplainer();
 
   if (!append) {
     renderResultsLoading(false);
@@ -502,12 +512,13 @@ async function handleCategorySelection(categoryName) {
 
 function clearFilter() {
   state.activeCategory = "";
+  state.browseResults = [];
+  state.browseCursor = null;
+  state.browseTotal = 0;
+  state.searchSummary = "";
+  state.searchResults = [];
+  state.searchCount = 0;
   renderCategories();
-  if (state.mode === "browse") {
-    state.browseResults = [];
-    state.browseCursor = null;
-    state.browseTotal = 0;
-  }
   updateExplainer();
   renderMode();
 }
