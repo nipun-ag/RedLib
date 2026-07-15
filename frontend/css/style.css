@@ -482,7 +482,7 @@ button {
   align-self: flex-start;
   margin-top: 18px;
   padding: 0;
-  color: rgba(231, 189, 183, 0.65);
+  color: #e5e2e1;
   font-family: var(--font-code);
   font-size: 12px;
   text-transform: uppercase;
@@ -714,6 +714,11 @@ button {
 
 .search-button {
   min-width: 144px;
+  background: #c0392b;
+}
+
+.search-button:hover:not(:disabled) {
+  background: #a93226;
 }
 
 .mode-explainer,
