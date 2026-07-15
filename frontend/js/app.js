@@ -201,7 +201,7 @@ function renderCategories() {
   state.categories.forEach((category) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "technique-button";
+    button.className = "technique-button technique-item";
     if (category.name === state.activeCategory) {
       button.classList.add("is-active");
     }
@@ -465,12 +465,19 @@ function setMode(mode) {
 }
 
 function triggerBrowseAttention() {
-  elements.sidebar.classList.remove("attention-pulse");
-  void elements.sidebar.offsetWidth;
-  elements.sidebar.classList.add("attention-pulse");
-  window.setTimeout(() => {
-    elements.sidebar.classList.remove("attention-pulse");
-  }, 1800);
+  const items = elements.sidebar.querySelectorAll(".technique-item");
+  items.forEach((item) => {
+    item.classList.remove("browse-pulse");
+  });
+
+  items.forEach((item, index) => {
+    window.setTimeout(() => {
+      item.classList.add("browse-pulse");
+      window.setTimeout(() => {
+        item.classList.remove("browse-pulse");
+      }, 300);
+    }, index * 150);
+  });
 }
 
 async function runSearch() {
