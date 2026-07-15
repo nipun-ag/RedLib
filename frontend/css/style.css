@@ -448,15 +448,6 @@ button {
   padding: 28px 20px 24px;
 }
 
-.sidebar-brand {
-  margin-bottom: 32px;
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
 .technique-list {
   display: grid;
   gap: 4px;
@@ -584,12 +575,13 @@ button {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
   margin-bottom: 24px;
 }
 
 .stat-card {
+  position: relative;
   min-height: 140px;
   padding: 24px;
   transition:
@@ -613,6 +605,33 @@ button {
   font-size: 34px;
   line-height: 1.15;
   letter-spacing: -0.03em;
+}
+
+.stat-tooltip {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: calc(100% + 12px);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  color: rgba(231, 189, 183, 0.72);
+  font-size: 12px;
+  line-height: 16px;
+  background: rgba(30, 31, 35, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.stat-card-with-tooltip:hover .stat-tooltip,
+.stat-card-with-tooltip:focus-within .stat-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .workspace-panel {
@@ -647,6 +666,10 @@ button {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
+}
+
+.search-row.is-hidden {
+  display: none;
 }
 
 .search-input-shell {

@@ -18,7 +18,6 @@
 
     <div class="workspace-shell">
       <aside class="glass-panel workspace-sidebar">
-        <div class="sidebar-brand">RedLib</div>
         <div class="sidebar-label">TECHNIQUES</div>
         <nav id="technique-list" class="technique-list" aria-label="Technique filters"></nav>
         <button id="clear-filter-button" class="text-button" type="button">Clear filter</button>
@@ -43,13 +42,17 @@
               <div class="stat-label">Total Prompts</div>
               <div id="stat-total-prompts" class="stat-value skeleton-text">&mdash;</div>
             </article>
-            <article class="glass-panel stat-card">
+            <article class="glass-panel stat-card stat-card-with-tooltip">
               <div class="stat-label">Sources</div>
               <div id="stat-total-sources" class="stat-value skeleton-text">&mdash;</div>
-            </article>
-            <article class="glass-panel stat-card">
-              <div class="stat-label">Last Sync</div>
-              <div id="stat-last-sync" class="stat-value skeleton-text">&mdash;</div>
+              <div class="stat-tooltip" role="tooltip">
+                <div>harmbench</div>
+                <div>jackhhao</div>
+                <div>jailbreakbench_behaviors</div>
+                <div>rubend18</div>
+                <div>trustairlab</div>
+                <div>wildjailbreak</div>
+              </div>
             </article>
           </section>
 
@@ -63,7 +66,7 @@
               </button>
             </div>
 
-            <div class="search-row">
+            <div id="search-row" class="search-row">
               <div class="search-input-shell glass-panel">
                 <span class="search-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">

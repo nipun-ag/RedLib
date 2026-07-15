@@ -46,12 +46,12 @@ const elements = {
   stats: {
     prompts: document.getElementById("stat-total-prompts"),
     sources: document.getElementById("stat-total-sources"),
-    lastSync: document.getElementById("stat-last-sync"),
   },
   techniqueList: document.getElementById("technique-list"),
   clearFilterButton: document.getElementById("clear-filter-button"),
   modeSearchButton: document.getElementById("mode-search"),
   modeBrowseButton: document.getElementById("mode-browse"),
+  searchRow: document.getElementById("search-row"),
   searchInput: document.getElementById("search-input"),
   searchButton: document.getElementById("search-button"),
   modeExplainer: document.getElementById("mode-explainer"),
@@ -147,18 +147,15 @@ function setStatLoadingState() {
 function renderStats(stats) {
   elements.stats.prompts.classList.remove("skeleton-text");
   elements.stats.sources.classList.remove("skeleton-text");
-  elements.stats.lastSync.classList.remove("skeleton-text");
 
   if (!stats) {
     elements.stats.prompts.textContent = "—";
     elements.stats.sources.textContent = "—";
-    elements.stats.lastSync.textContent = "—";
     return;
   }
 
   animateNumber(elements.stats.prompts, stats.total_prompts);
   elements.stats.sources.textContent = formatNumber(stats.total_sources);
-  elements.stats.lastSync.textContent = formatDate(stats.last_sync);
 }
 
 async function loadStats() {
@@ -377,7 +374,7 @@ function renderBrowseResults() {
 
   if (!state.activeCategory) {
     elements.resultsArea.appendChild(
-      createStatusMessage("Choose a technique to browse the raw corpus."),
+      createStatusMessage("Select a technique from the sidebar to browse its prompts."),
     );
     return;
   }
@@ -411,6 +408,7 @@ function renderBrowseResults() {
 function renderMode() {
   updateModeButtons();
   updateExplainer();
+  elements.searchRow.classList.toggle("is-hidden", state.mode === "browse");
   if (state.mode === "search") {
     renderSearchResults();
   } else {
