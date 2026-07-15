@@ -2578,3 +2578,99 @@ Verification:
 - `npm.cmd run build`
 
 ---
+## 2026-07-15
+Built the complete React frontend in `frontend/src/` around a
+research-grade, hard-edged interface that matches the live RedLib API
+contracts and workflow.
+
+Issue:
+- The Vite frontend still rendered only a placeholder shell and did not
+  implement the responsible-use gate, taxonomy filters, semantic search,
+  browse pagination, lazy prompt inspection, live corpus stats, or the
+  required mode-aware explanation layer.
+- The React app also did not yet support the required `@/config` import
+  path for `API_BASE_URL`.
+
+Change:
+- Replaced the placeholder React app with a full workspace under
+  `frontend/src/` using the requested structure:
+  `pages/`, `components/`, `hooks/`, and `lib/`.
+- Added a responsible-use gate backed by session storage before the main
+  app shell renders.
+- Added live category loading from `GET /api/categories` with count-up
+  animation and category filter selection.
+- Added semantic search via `POST /api/query`, including AI summary,
+  excerpt-only result cards, confidence signals, and technique
+  breakdown.
+- Added raw corpus browse mode via `GET /api/browse` with category-first
+  loading and cursor-based `Load More` pagination.
+- Added lazy full-prompt inspection via `GET /api/prompts/{id}` behind
+  the explicit `View Full Prompt` action.
+- Added corpus stats hydration from `GET /api/stats`.
+- Replaced the visual baseline with a documented dark editorial-tactical
+  design system in `frontend/src/index.css`, enforcing zero rounded
+  corners across the entire UI.
+- Added `frontend/jsconfig.json` and updated `frontend/vite.config.js`
+  so `@/config` resolves correctly in the Vite app.
+- Rewrote `docs/DESIGN.md` to describe the shipped React design system.
+
+Why this was needed:
+- RedLib's frontend needs to support two distinct research workflows in
+  one coherent operational surface: semantic analysis and direct corpus
+  inspection.
+- The UI also needs to reflect the product's trust-and-safety audience
+  with a more deliberate, source-grounded visual language than a generic
+  app scaffold.
+
+Verification:
+- `npm.cmd run build`
+
+---
+## 2026-07-15
+Built the complete React frontend in `frontend/src/` around a
+research-grade, hard-edged interface that matches the live RedLib API
+contracts and workflow.
+
+Issue:
+- The Vite frontend still rendered only a placeholder shell and did not
+  implement the responsible-use gate, taxonomy filters, semantic search,
+  browse pagination, lazy prompt inspection, live corpus stats, or the
+  required mode-aware explanation layer.
+- The React app also did not yet support the required `@/config` import
+  path for `API_BASE_URL`.
+
+Change:
+- Replaced the placeholder React app with a full workspace under
+  `frontend/src/` using the requested structure:
+  `pages/`, `components/`, `hooks/`, and `lib/`.
+- Added a responsible-use gate backed by session storage before the main
+  app shell renders.
+- Added live category loading from `GET /api/categories` with count-up
+  animation and category filter selection.
+- Added semantic search via `POST /api/query`, including AI summary,
+  excerpt-only result cards, confidence signals, and technique
+  breakdown.
+- Added raw corpus browse mode via `GET /api/browse` with category-first
+  loading and cursor-based `Load More` pagination.
+- Added lazy full-prompt inspection via `GET /api/prompts/{id}` behind
+  the explicit `View Full Prompt` action.
+- Added corpus stats hydration from `GET /api/stats`.
+- Replaced the visual baseline with a documented dark editorial-tactical
+  design system in `frontend/src/index.css`, enforcing zero rounded
+  corners across the entire UI.
+- Added `frontend/jsconfig.json` and updated `frontend/vite.config.js`
+  so `@/config` resolves correctly in the Vite app.
+- Rewrote `docs/DESIGN.md` to describe the shipped React design system.
+
+Why this was needed:
+- RedLib's frontend needs to support two distinct research workflows in
+  one coherent operational surface: semantic analysis and direct corpus
+  inspection.
+- The UI also needs to reflect the product's trust-and-safety audience
+  with a more deliberate, source-grounded visual language than a generic
+  app scaffold.
+
+Verification:
+- `npm.cmd run build`
+
+---
