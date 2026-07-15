@@ -115,8 +115,7 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--on-surface);
-  background:
-    radial-gradient(circle at 50% -20%, rgba(26, 26, 32, 0.88) 0%, rgba(10, 10, 12, 1) 100%);
+  background: #000000;
   font-family: var(--font-body);
   font-size: var(--body-md-size);
   line-height: var(--body-md-line);
@@ -124,10 +123,7 @@ body {
 }
 
 body.page-workspace {
-  background:
-    radial-gradient(circle at 15% 0%, rgba(255, 85, 69, 0.08) 0%, transparent 35%),
-    radial-gradient(circle at 85% 100%, rgba(255, 85, 69, 0.05) 0%, transparent 32%),
-    #0d0e12;
+  background: #000000;
 }
 
 a {
@@ -148,25 +144,6 @@ input,
 button {
   border: 0;
   background: none;
-}
-
-.ambient-orb {
-  position: fixed;
-  width: 600px;
-  height: 600px;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 59, 48, 0.03) 0%, transparent 70%);
-}
-
-.ambient-orb-top {
-  top: -300px;
-  left: -300px;
-}
-
-.ambient-orb-bottom {
-  right: -300px;
-  bottom: -300px;
 }
 
 .glass-panel {
@@ -616,22 +593,38 @@ button {
 }
 
 .sources-tooltip {
-  display: none;
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  background: #1a1b1f;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 12px 16px;
+  background: #0f0f0f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
   z-index: 1000;
   min-width: 200px;
-  font-size: 12px;
-  color: #9a9a9a;
-  line-height: 1.8;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: #888888;
+  line-height: 2;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.sources-tooltip-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  color: rgba(229, 9, 20, 0.6);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sources-card-wrapper:hover .sources-tooltip {
-  display: block;
+  visibility: visible;
+  opacity: 1;
 }
 
 .workspace-panel {
