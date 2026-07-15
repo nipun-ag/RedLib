@@ -42,10 +42,10 @@
               <div class="stat-label">Total Prompts</div>
               <div id="stat-total-prompts" class="stat-value skeleton-text">&mdash;</div>
             </article>
-            <article class="glass-panel stat-card stat-card-with-tooltip">
+            <article id="sources-stat-card" class="glass-panel stat-card stat-card-with-tooltip">
               <div class="stat-label">Sources</div>
               <div id="stat-total-sources" class="stat-value skeleton-text">&mdash;</div>
-              <div class="stat-tooltip" role="tooltip">
+              <div id="sources-tooltip" class="stat-tooltip" role="tooltip">
                 <div>harmbench</div>
                 <div>jackhhao</div>
                 <div>jailbreakbench_behaviors</div>
@@ -89,6 +89,11 @@
             <p id="mode-explainer" class="mode-explainer">
               Search finds the most relevant prompts using AI, then summarizes what it found. 0 prompts searched.
             </p>
+
+            <section id="technique-description-panel" class="glass-panel technique-description-panel is-hidden">
+              <div id="technique-description-label" class="technique-description-label"></div>
+              <p id="technique-description-copy" class="technique-description-copy"></p>
+            </section>
 
             <section id="results-area" class="results-stack" aria-live="polite"></section>
           </section>

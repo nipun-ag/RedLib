@@ -21,6 +21,24 @@ const CATEGORY_NAMES = [
   "Legitimate Context or Research Framing",
   "Contextual Reframing or Euphemism",
 ];
+const CATEGORY_DESCRIPTIONS = {
+  "Role-Based Task Framing":
+    "Prompts that instruct the model to adopt a specific persona, professional role, or fictional identity in order to bypass its default safety constraints.",
+  "Fictional / Hypothetical Framing":
+    "Prompts that embed harmful requests inside fictional scenarios, thought experiments, or hypothetical situations to make the model treat them as safe to answer.",
+  "Authority or Legitimacy Spoofing":
+    "Prompts that impersonate authoritative figures, institutions, or system-level instructions to convince the model it is operating under special permissions.",
+  "Obfuscation / Encoding":
+    "Prompts that disguise their true intent through encoding schemes, wordplay, structural manipulation, or indirect language to evade safety filters.",
+  "Simulation or Sandbox Framing":
+    "Prompts that convince the model it is operating inside a simulation, test environment, or sandboxed context where its normal safety rules do not apply.",
+  "Dual-Response or Comparative Framing":
+    "Prompts that ask the model to produce two contrasting responses simultaneously, typically one safe and one unrestricted, exploiting the comparative format to extract harmful content.",
+  "Legitimate Context or Research Framing":
+    "Prompts that justify harmful requests by presenting them as necessary for academic research, journalism, security testing, or other socially sanctioned purposes.",
+  "Contextual Reframing or Euphemism":
+    "Prompts that reframe harmful requests using softer language, euphemisms, or shifted context to make the model treat dangerous content as acceptable.",
+};
 
 if (window.localStorage.getItem(STORAGE_KEY) !== "true") {
   window.location.replace("./index.html");
@@ -47,6 +65,9 @@ const elements = {
     prompts: document.getElementById("stat-total-prompts"),
     sources: document.getElementById("stat-total-sources"),
   },
+  sidebar: document.querySelector(".workspace-sidebar"),
+  sourcesStatCard: document.getElementById("sources-stat-card"),
+  sourcesTooltip: document.getElementById("sources-tooltip"),
   techniqueList: document.getElementById("technique-list"),
   clearFilterButton: document.getElementById("clear-filter-button"),
   modeSearchButton: document.getElementById("mode-search"),
@@ -55,6 +76,9 @@ const elements = {
   searchInput: document.getElementById("search-input"),
   searchButton: document.getElementById("search-button"),
   modeExplainer: document.getElementById("mode-explainer"),
+  techniqueDescriptionPanel: document.getElementById("technique-description-panel"),
+  techniqueDescriptionLabel: document.getElementById("technique-description-label"),
+  techniqueDescriptionCopy: document.getElementById("technique-description-copy"),
   resultsArea: document.getElementById("results-area"),
   modal: document.getElementById("prompt-modal"),
   modalBackdrop: document.querySelector(".modal-backdrop"),
@@ -405,9 +429,23 @@ function renderBrowseResults() {
   }
 }
 
+function renderTechniqueDescription() {
+  if (!state.activeCategory || !CATEGORY_DESCRIPTIONS[state.activeCategory]) {
+    elements.techniqueDescriptionPanel.classList.add("is-hidden");
+    elements.techniqueDescriptionLabel.textContent = "";
+    elements.techniqueDescriptionCopy.textContent = "";
+    return;
+  }
+
+  elements.techniqueDescriptionLabel.textContent = state.activeCategory;
+  elements.techniqueDescriptionCopy.textContent = CATEGORY_DESCRIPTIONS[state.activeCategory];
+  elements.techniqueDescriptionPanel.classList.remove("is-hidden");
+}
+
 function renderMode() {
   updateModeButtons();
   updateExplainer();
+  renderTechniqueDescription();
   elements.searchRow.classList.toggle("is-hidden", state.mode === "browse");
   if (state.mode === "search") {
     renderSearchResults();
@@ -419,6 +457,38 @@ function renderMode() {
 function setMode(mode) {
   state.mode = mode;
   renderMode();
+}
+
+function positionSourcesTooltip() {
+  const cardRect = elements.sourcesStatCard.getBoundingClientRect();
+  const tooltipRect = elements.sourcesTooltip.getBoundingClientRect();
+  const viewportPadding = 16;
+  const desiredTop = cardRect.bottom + 12;
+  const maxTop = window.innerHeight - tooltipRect.height - viewportPadding;
+  const top = Math.max(viewportPadding, Math.min(desiredTop, maxTop));
+  const maxLeft = window.innerWidth - tooltipRect.width - viewportPadding;
+  const left = Math.max(viewportPadding, Math.min(cardRect.left, maxLeft));
+
+  elements.sourcesTooltip.style.top = `${top}px`;
+  elements.sourcesTooltip.style.left = `${left}px`;
+}
+
+function showSourcesTooltip() {
+  positionSourcesTooltip();
+  elements.sourcesTooltip.classList.add("is-visible");
+}
+
+function hideSourcesTooltip() {
+  elements.sourcesTooltip.classList.remove("is-visible");
+}
+
+function triggerBrowseAttention() {
+  elements.sidebar.classList.remove("attention-pulse");
+  void elements.sidebar.offsetWidth;
+  elements.sidebar.classList.add("attention-pulse");
+  window.setTimeout(() => {
+    elements.sidebar.classList.remove("attention-pulse");
+  }, 1800);
 }
 
 async function runSearch() {
@@ -583,10 +653,24 @@ function bindEvents() {
 
   elements.modeBrowseButton.addEventListener("click", () => {
     setMode("browse");
+    if (!state.activeCategory) {
+      triggerBrowseAttention();
+    }
   });
 
   elements.clearFilterButton.addEventListener("click", () => {
     clearFilter();
+  });
+
+  elements.sourcesStatCard.addEventListener("mouseenter", showSourcesTooltip);
+  elements.sourcesStatCard.addEventListener("mouseleave", hideSourcesTooltip);
+  elements.sourcesStatCard.addEventListener("focusin", showSourcesTooltip);
+  elements.sourcesStatCard.addEventListener("focusout", hideSourcesTooltip);
+
+  window.addEventListener("resize", () => {
+    if (elements.sourcesTooltip.classList.contains("is-visible")) {
+      positionSourcesTooltip();
+    }
   });
 
   elements.modalCloseButton.addEventListener("click", closePromptModal);
