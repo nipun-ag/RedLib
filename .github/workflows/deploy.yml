@@ -1,4 +1,4 @@
-yamlname: Deploy RedLib
+name: Deploy RedLib
 on:
   push:
     branches:
