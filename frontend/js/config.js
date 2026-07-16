@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "https://api-redlib.bynipun.com";
 
 window.API_BASE_URL = API_BASE_URL;
 
