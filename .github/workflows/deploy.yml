@@ -18,5 +18,5 @@ jobs:
             git pull origin main
             /home/nipun/apps/redlib/venv/bin/pip install -r requirements.txt --quiet
             sudo systemctl restart redlib
-            sleep 5
+            sleep 15
             curl -sf http://localhost:8001/api/stats > /dev/null || exit 1
