@@ -36,7 +36,7 @@ RedLib has two high-level systems:
 
 The frontend lives in `frontend/` as static HTML, CSS, and JavaScript.
 The backend API lives in `api/app.py`. Detailed implementation notes
-belong in [docs/ARCHITECTURE.md](/C:/Users/nipun/projects/RedLib/docs/ARCHITECTURE.md).
+belong in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
@@ -72,7 +72,7 @@ design, and vector ingestion into distinct responsibilities.
 
 | Layer         | Technology                           |
 |---------------|--------------------------------------|
-| Frontend      | Vanilla JS, HTML, CSS (Tailwind)     |
+| Frontend      | Vanilla JS, HTML, plain CSS design system (no build step) |
 | Backend       | FastAPI                              |
 | RAG Framework | LlamaIndex                           |
 | Vector Store  | Qdrant Cloud                         |
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 ```
 
 RedLib expects the environment variables listed in
-[.env.example](/C:/Users/nipun/projects/RedLib/.env.example):
+[.env.example](.env.example):
 
 ```text
 QDRANT_URL
@@ -135,8 +135,8 @@ Then open:
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000`
 
-The checked-in frontend configuration points at `http://localhost:8000`
-for API requests.
+The checked-in `frontend/js/config.js` points at the production API by
+default and must be changed to `http://localhost:8000` for local development.
 
 ---
 
@@ -162,7 +162,7 @@ for API requests.
 - `frontend/`: static UI
 
 For contributor workflow and repo-specific guardrails, see
-[AGENTS.md](/C:/Users/nipun/projects/RedLib/AGENTS.md).
+[AGENTS.md](AGENTS.md).
 
 ---
 
