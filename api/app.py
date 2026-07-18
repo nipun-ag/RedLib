@@ -539,7 +539,7 @@ async def get_stats() -> StatsResponse:
 
         return StatsResponse(
             total_prompts=total_prompts,
-            total_sources=6,
+            total_sources=7,
             last_sync="2026-07-10",
         )
     except Exception as e:
