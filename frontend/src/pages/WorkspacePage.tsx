@@ -226,15 +226,11 @@ export function WorkspacePage() {
 
   async function handleCategorySelection(categoryName: string) {
     setAttention(false)
-    if (mode === "search") {
-      setSearchCategory(categoryName)
-    } else {
-      setBrowseCategoryFilter(categoryName)
-      setBrowseResults([])
-      setBrowseCursor(null)
-      setBrowseTotal(0)
-      await runBrowse(categoryName)
-    }
+    setBrowseCategoryFilter(categoryName)
+    setBrowseResults([])
+    setBrowseCursor(null)
+    setBrowseTotal(0)
+    await runBrowse(categoryName)
   }
 
   function clearFilter() {
@@ -255,7 +251,10 @@ export function WorkspacePage() {
   function handleModeChange(next: string) {
     const nextMode = next as Mode
     setMode(nextMode)
-    if (nextMode === "browse" && !browseCategoryFilter) {
+    if (nextMode === "search") {
+      setSearchCategory("")
+      setAttention(false)
+    } else if (!browseCategoryFilter) {
       setAttention(true)
       window.setTimeout(() => setAttention(false), 1800)
     } else {
