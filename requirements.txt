@@ -1,14 +1,14 @@
-datasets
-anthropic
-llama-index
-llama-index-llms-anthropic
-llama-index-vector-stores-qdrant
-qdrant-client
-llama-index-postprocessor-cohere-rerank
-cohere
-tiktoken
+datasets==5.0.0
+anthropic==0.116.0
+llama-index==0.14.23
+llama-index-llms-anthropic==0.11.8
+llama-index-vector-stores-qdrant==0.10.2
+qdrant-client==1.18.0
+llama-index-postprocessor-cohere-rerank==0.9.0
+cohere==6.1.0
+tiktoken==0.13.0
 
-fastapi
-uvicorn
+fastapi==0.139.0
+uvicorn==0.51.0
 
 fastembed==0.8.0
