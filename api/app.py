@@ -417,8 +417,8 @@ app.add_middleware(
 )
 
 
-@limiter.limit("10/minute")
 @app.post("/api/query")
+@limiter.limit("10/minute")
 async def query(request: Request, query_request: QueryRequest) -> QueryResponse:
     """
     Main RAG query endpoint.
@@ -568,8 +568,8 @@ async def get_browse_results(
         )
 
 
-@limiter.limit("30/minute")
 @app.get("/api/prompts/{prompt_id}")
+@limiter.limit("30/minute")
 async def get_prompt(request: Request, prompt_id: str) -> PromptResponse:
     """Fetch a single full prompt on demand without running the RAG pipeline."""
     try:
