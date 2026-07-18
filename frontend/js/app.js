@@ -57,7 +57,6 @@ const state = {
   stats: null,
   searchResults: [],
   searchSummary: "",
-  searchCount: 0,
   hasSearched: false,
   browseResults: [],
   browseTotal: 0,
@@ -100,23 +99,6 @@ function formatNumber(value) {
   }
 
   return new Intl.NumberFormat("en-US").format(value);
-}
-
-function formatDate(value) {
-  if (!value) {
-    return "—";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(parsed);
 }
 
 async function fetchJson(path, options = {}) {
@@ -473,7 +455,6 @@ async function runSearch() {
 
     state.searchSummary = data.answer || "";
     state.searchResults = data.results || [];
-    state.searchCount = typeof data.result_count === "number" ? data.result_count : state.searchResults.length;
     state.hasSearched = true;
     renderMode();
   } catch (error) {
@@ -551,7 +532,6 @@ async function handleCategorySelection(categoryName) {
   state.browseCursor = null;
   state.searchSummary = "";
   state.searchResults = [];
-  state.searchCount = 0;
   state.hasSearched = false;
   renderMode();
   renderResultsLoading(false);
@@ -568,7 +548,6 @@ function clearFilter() {
   state.browseLoading = false;
   state.searchSummary = "";
   state.searchResults = [];
-  state.searchCount = 0;
   state.hasSearched = false;
   renderCategories();
   updateExplainer();

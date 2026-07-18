@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -161,61 +161,3 @@ def get_reranker(top_n: int = 10) -> Any:
 
     logger.info(f"CohereRerank configured with top_n={top_n}")
     return reranker
-
-
-def retrieve(
-    query: str,
-    retriever: Any,
-    reranker: Any,
-    category_filter: Optional[str] = None,
-) -> list[Any]:
-    """Run hybrid retrieval + reranking pipeline.
-
-    Args:
-        query: Query string
-        retriever: Configured QueryFusionRetriever
-        reranker: Configured CohereRerank postprocessor
-        category_filter: Optional technique category to filter by
-
-    Returns:
-        List of reranked nodes, empty list on error
-    """
-    try:
-        # Build metadata filter if category provided
-        if category_filter:
-            from llama_index.core.vector_stores import (
-                FilterOperator,
-                MetadataFilter,
-                MetadataFilters,
-            )
-
-            filters = MetadataFilters(
-                filters=[
-                    MetadataFilter(
-                        key="technique",
-                        value=category_filter,
-                        operator=FilterOperator.EQ,
-                    )
-                ]
-            )
-        else:
-            filters = None
-
-        # Run retriever
-        retrieved_nodes = retriever.retrieve(query, filters=filters)
-        logger.info(
-            f"Retrieved {len(retrieved_nodes)} results for query: {query[:50]}..."
-        )
-
-        # Apply reranker
-        reranked_nodes = reranker.postprocess_nodes(
-            nodes=retrieved_nodes,
-            query_str=query,
-        )
-        logger.info(f"Reranked to {len(reranked_nodes)} results")
-
-        return reranked_nodes
-
-    except Exception as e:
-        logger.error(f"Retrieval failed: {type(e).__name__}: {e}")
-        return []
