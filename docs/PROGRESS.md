@@ -1,5 +1,395 @@
 ﻿# RedLib — Progress Log
 
+## 2026-07-18
+Added rate limiting to `/api/query` and `/api/prompts/{prompt_id}` using
+slowapi, and resolved three separate bugs that each silently prevented
+enforcement before the fix actually worked in production.
+
+Issue:
+- `/api/query` triggers OpenAI, Cohere, and Anthropic calls on every
+  request with no cost protection. `/api/prompts/{prompt_id}` returns
+  full raw jailbreak text with no protection against sequential
+  scraping. Neither endpoint had any rate limiting.
+- The chosen approach was rate limiting only, with no login wall or API
+  key, since RedLib is intended to remain a fully public research tool.
+
+Change:
+- Added `slowapi==0.1.10` to `requirements.txt`.
+- Registered a `Limiter` on `app.state` with `SlowAPIMiddleware` and a
+  `RateLimitExceeded` exception handler.
+- Limited `/api/query` to 10 requests per minute and
+  `/api/prompts/{prompt_id}` to 30 requests per minute, both keyed by
+  real client IP.
+- Left `/api/stats`, `/api/categories`, and `/api/browse` unlimited.
+
+Bugs found and fixed during rollout, in the order discovered:
+1. slowapi requires its `Request` parameter to be named literally
+   `request`; an initial implementation used `http_request` instead,
+   which crashed the app at import time on every startup
+   (`No "request" or "websocket" argument on function`). This caused a
+   sustained production outage (502 from Nginx) until fixed. Fixed by
+   renaming the parameter to `request` and renaming the pre-existing
+   Pydantic body parameter on `/api/query` to `query_request` to avoid
+   a collision.
+2. The rate limiter's key function initially used slowapi's default
+   `get_remote_address`, which reads the raw socket address. Behind
+   Nginx's reverse proxy this is always `127.0.0.1`, meaning every
+   visitor would have shared a single global rate-limit bucket rather
+   than being limited individually. Fixed by adding a custom
+   `get_real_client_ip` function that reads the first IP from the
+   `X-Forwarded-For` header, with a direct-connection fallback for
+   local development.
+3. `@limiter.limit(...)` was initially placed above `@app.post(...)` /
+   `@app.get(...)` on both routes. Because Python decorators apply
+   bottom-up, FastAPI registered the raw unwrapped function before the
+   rate-limit wrapper was applied, so the limiter never executed on any
+   request despite no errors being raised. Diagnosed by adding a
+   temporary debug log inside the key function and observing it never
+   fired; fixed by reordering so `@app.post`/`@app.get` is the outer
+   decorator and `@limiter.limit` is the inner one, matching slowapi's
+   documented pattern.
+
+Why this was needed:
+- Cost protection was a real gap: nothing prevented a script from
+  calling `/api/query` in a tight loop and running up the OpenAI,
+  Cohere, and Anthropic bill with no warning.
+- Each of the three bugs above looked correct in code review and in
+  the git diff; none were caught until tested against the live,
+  publicly reachable API through the full Cloudflare-Nginx-Uvicorn
+  proxy chain. This reinforced that diff review alone is not
+  sufficient verification for behavior that depends on runtime request
+  context (headers, decorator execution order); empirical testing
+  against production was necessary to catch all three issues.
+
+Verification:
+- Confirmed via `sudo journalctl -u redlib -f` that the API starts
+  cleanly with `Application startup complete` after each fix.
+- Ran 12 rapid `POST /api/query` requests against
+  `https://api-redlib.bynipun.com` from an external client: the first
+  10 returned `200`, requests 11 and 12 returned `429`, confirming
+  correct per-IP enforcement end to end through Cloudflare and Nginx.
+- Removed temporary debug logging once enforcement was confirmed
+  working.
+
+---
+
+## 2026-07-18
+Fixed a synthesizer refusal bug discovered through manual production
+testing, where Claude Haiku would refuse to analyze retrieved results
+instead of producing the documented grounded summary.
+
+Issue:
+- A live search for "dog" returned retrieved results correctly, but the
+  AI Summary read "I cannot provide analysis of these retrieved
+  chunks... For meaningful red team analysis, a corpus requires
+  heterogeneous examples..." instead of a technique-level analytical
+  summary.
+- This directly violated existing `SYSTEM_PROMPT` constraints in
+  `api/synthesizer.py`, specifically "no apologies or disclaimers in
+  the answer body" and "never say the results are low-relevance... if
+  results were returned." The model overrode its own explicit
+  instructions, likely due to Claude Haiku's underlying alignment
+  training reacting to the combination of animal-cruelty content and
+  persona-override jailbreak framing in the retrieved chunks.
+
+Change:
+- Added a "Non-Negotiable: No Refusals" section to `SYSTEM_PROMPT` in
+  `api/synthesizer.py`, explicitly framing the corpus as
+  pre-authorized research material and forbidding refusal or
+  corpus-composition commentary.
+- Added a structural safety net in `api/app.py` independent of prompt
+  compliance: `is_refusal()` checks the synthesizer's output against a
+  list of known refusal phrases, and `build_fallback_summary()`
+  deterministically constructs a summary from the already-reliable
+  `technique_counts` data (computed from real retrieved node metadata,
+  not from the LLM) whenever a refusal is detected.
+- `/api/query` now substitutes the fallback summary in place of a
+  detected refusal before returning `QueryResponse.answer`.
+
+Why this was needed:
+- A prompt-only fix could reduce refusal frequency but could not
+  guarantee it would never recur, since the behavior originates from
+  the underlying model's own training, not from a gap in the system
+  prompt. A structural fallback guarantees a broken, preachy, or
+  refusal-toned response is never shown to a user, regardless of
+  whether future prompt tuning fully suppresses the behavior.
+
+Verification:
+- Re-ran the exact "dog" query against production after deploying both
+  layers. Claude still refused internally, but the response returned to
+  the user was the deterministic fallback: "Role-Based Task Framing is
+  the dominant pattern in this result set, appearing in 3 of 10
+  results, with additional overlap into..." matching
+  `build_fallback_summary`'s template exactly, confirming the safety
+  net triggered correctly.
+- Confirmed via `sudo journalctl -u redlib` that a warning log fires
+  each time a refusal is intercepted, including the first 200
+  characters of the original refused response for future pattern
+  tuning.
+
+---
+
+## 2026-07-18
+Fixed a frontend state bug where clicking a technique category after
+completing a search left the UI in a mixed search/browse state instead
+of switching cleanly to browse mode.
+
+Issue:
+- After running a search and receiving results, clicking any category
+  label in the sidebar did not switch to browse mode as expected. The
+  AI Summary and search results remained visible, and the category
+  filter was silently combined into another search request instead.
+- Root cause: `handleCategorySelection` in `frontend/js/app.js` checked
+  `elements.searchInput.value.trim()` and ran a filtered search instead
+  of entering browse mode whenever the search box contained leftover
+  text from a prior search, which it always did immediately after a
+  completed search.
+- This behavior was technically intentional, documented in the
+  2026-06-28 entry below as "typed queries continue to combine with an
+  active category filter when one is selected," but in practice it
+  produced a confusing UI state that looked broken rather than useful.
+
+Change:
+- Removed the conditional branch in `handleCategorySelection` entirely.
+  Category clicks now unconditionally clear the search input and switch
+  to browse mode, regardless of any text left over from a prior search.
+- The combined search+category-filter behavior remains available and
+  unchanged for the case where a user actively types a query while a
+  category is already selected; only the category-click entry point
+  changed.
+
+Why this was needed:
+- A single predictable behavior for category clicks is less confusing
+  than a dual mode that silently depends on invisible search-box state
+  the user has no reason to think about after a search has already
+  completed.
+
+Verification:
+- Reproduced the original bug on production before the fix: searched
+  "cat", confirmed results and AI Summary loaded, clicked a category,
+  confirmed the UI incorrectly stayed on the search tab with the old
+  summary still visible.
+- After deploying the fix, repeated the same steps and confirmed the
+  UI now switches cleanly to browse mode with the search input cleared.
+
+---
+
+## 2026-07-18
+Fixed a shared-state race condition in `/api/query` category filtering,
+flagged as the top finding in a Cursor static-analysis audit of the
+whole repository.
+
+Issue:
+- `/api/query` applied category filters by mutating
+  `retriever._filters` directly on each sub-retriever of the shared,
+  application-lifetime `QueryFusionRetriever` stored on
+  `app.state.query_engine`, running the query, then restoring the
+  original filter value in a `finally` block afterward.
+- Under concurrent requests, one request's filter mutation could be
+  read by a different concurrently-running request before the first
+  request's `finally` block restored it, causing category filters to
+  leak between unrelated requests.
+
+Change:
+- `get_retriever` in `api/retriever.py` now returns both the shared
+  `QueryFusionRetriever` and the underlying `VectorStoreIndex` object
+  it was built from.
+- Added `get_filtered_retriever(index_obj, category_filter)`, which
+  constructs an entirely new, isolated `QueryFusionRetriever` from the
+  shared, read-only `index_obj` for each filtered request, with the
+  metadata filter baked in at construction time rather than mutated
+  afterward.
+- `initialize_pipeline` in `api/rag.py` now returns
+  `(query_engine, index_obj, reranker, synthesizer)`, all four stored
+  on `app.state` at startup.
+- `/api/query` now builds a fresh, request-scoped `RetrieverQueryEngine`
+  from `get_filtered_retriever` when a category filter is present,
+  reusing the shared reranker and synthesizer. Unfiltered requests
+  continue to use the shared `app.state.query_engine` unchanged. No
+  shared object is mutated at request time in either path.
+
+Why this was needed:
+- The previous mutate-then-restore pattern was a correctness bug that
+  would only surface under real concurrent load, making it easy to miss
+  in normal development testing but capable of returning silently wrong
+  results in production.
+
+Verification:
+- Fired two concurrent `POST /api/query` requests against production
+  with different category filters
+  (`Role-Based Task Framing` and `Fictional / Hypothetical Framing`)
+  using background PowerShell jobs. Confirmed each response's
+  `technique_breakdown` contained only its own requested category with
+  zero cross-contamination.
+
+---
+
+## 2026-07-18
+Applied a batch of correctness, security, and cleanup fixes identified
+by a Cursor static-analysis audit of the full repository, each verified
+independently via `git show` diff review and a green GitHub Actions
+deploy before moving to the next.
+
+CORS hardening:
+- `api/app.py` previously allowed `allow_origins=["*"]` with
+  `allow_credentials=True`, letting any website call the paid RAG API
+  from a visitor's browser. Restricted `allow_origins` to
+  `["https://redlib.bynipun.com"]` and set `allow_credentials=False`,
+  since the API is stateless and does not use cookies.
+
+Query validation:
+- `QueryRequest.query` had no length bounds, allowing empty or
+  oversized payloads to reach the embedding/rerank/LLM pipeline.
+  Added `Field(min_length=1, max_length=1000)`.
+- `/api/query` accepted any arbitrary `category_filter` string with no
+  validation, unlike `/api/browse` which already validated it via
+  `validate_category_name`. `/api/query` now calls the same validation
+  function before any retrieval work begins.
+
+Stats and tooltip accuracy:
+- `/api/stats` reported `total_sources=6` while `SOURCE_REGISTRY`
+  actually contains 7 sources. Corrected to `total_sources=7`.
+- The sources tooltip in `frontend/search.html` was missing `walledai`
+  from its list of 6 sources. Added it, bringing the tooltip to all 7.
+
+Documentation drift:
+- `README.md` described the frontend as using Tailwind CSS via CDN;
+  corrected to describe the actual plain CSS design system with no
+  build step.
+- `README.md` did not mention that `frontend/js/config.js` points at
+  the production API by default; added a note that it must be changed
+  to `http://localhost:8000` for local development.
+- `README.md` contained absolute Windows-style paths
+  (`C:/Users/nipun/projects/RedLib/...`) in several links, broken for
+  any reader not on that exact machine. Replaced with relative paths.
+
+Deploy reliability:
+- `.github/workflows/deploy.yml` previously only ran `git pull` and
+  `systemctl restart redlib`, never installing dependency changes from
+  `requirements.txt`. Added
+  `venv/bin/pip install -r requirements.txt --quiet` before the
+  restart, and a post-restart health check
+  (`curl -sf http://localhost:8001/api/stats`) that fails the deploy if
+  the API does not come back up. Required tuning the post-restart wait
+  from `sleep 5` to `sleep 15` since the pipeline's FastEmbed and
+  Qdrant initialization takes roughly 12 seconds.
+
+Dependency pinning:
+- `requirements.txt` had only `fastembed` pinned; every other package
+  (`fastapi`, `llama-index`, `qdrant-client`, `anthropic`, etc.) was
+  unpinned. Pinned all packages to their exact versions already
+  verified working in both the local Windows/Python 3.13 environment
+  and the Hetzner Ubuntu/Python 3.12 production environment.
+
+Dead code removal:
+- Removed an unused standalone `retrieve()` function from
+  `api/retriever.py` that duplicated logic already live in the
+  `RetrieverQueryEngine` path and had zero callers anywhere in the
+  codebase.
+- Removed `formatDate()` and the `searchCount` state property from
+  `frontend/js/app.js`; neither was read anywhere after being defined
+  or written.
+- Removed unused `--green-confidence`, `--amber-confidence`,
+  `--muted-confidence` CSS custom properties and the unused
+  `.source-label` rule from `frontend/css/style.css`.
+
+Qdrant client and category count efficiency:
+- Every route handler in `api/app.py` previously called
+  `get_qdrant_client()` fresh on each request, creating a new
+  `QdrantClient` connection pool per call instead of reusing one.
+  Added a single shared `app.state.qdrant_client` created once at
+  startup; all routes now reuse it.
+- `get_category_items()` previously computed sidebar counts by
+  scrolling the entire 168,115-record Qdrant collection in pages of
+  1000 and counting technique labels in Python. Replaced with 8
+  targeted `client.count()` calls, one per approved category, using
+  the existing `technique` keyword payload index.
+
+Verification:
+- Every change above was verified via `git show` diff review before
+  deploy, confirmed to touch only the described lines, and confirmed
+  to deploy cleanly via the GitHub Actions health-checked pipeline.
+- Post-deploy functional checks confirmed sidebar counts, category
+  browsing, full-prompt lookup, search, and `/api/stats` all continued
+  returning correct data after the Qdrant client and count-query
+  changes.
+
+---
+
+## 2026-07-18
+Resolved two production deployment blockers on first Hetzner server
+startup, deployed the frontend to Vercel, and configured GitHub Actions
+auto-deploy for both frontend and backend.
+
+Backend deployment:
+- Diagnosed and fixed a stale `prd` Doppler config pointing at the
+  wrong Qdrant cluster, caused by a bulk import from parent `dev`
+  instead of the `dev_personal` branch that held the correct overridden
+  values. Reconciled the override into parent `dev` and set the correct
+  `QDRANT_URL`/`QDRANT_API_KEY` explicitly in `prd`.
+- Diagnosed and resolved a FastEmbed platform exclusion that no longer
+  held: `fastembed==0.8.0` was verified to install and run cleanly on
+  Python 3.12 Linux with prebuilt wheels, matching the version already
+  used locally. Consolidated the previously separate, untracked
+  server-only requirements workaround into the single tracked
+  `requirements.txt`.
+- Set up `redlib.service` under systemd with `Restart=on-failure` so
+  the API survives SSH disconnects and restarts automatically on
+  crash.
+- Configured Nginx as a reverse proxy for `api-redlib.bynipun.com`,
+  obtained an SSL certificate via Certbot with auto-renewal.
+
+Frontend deployment:
+- Deployed `frontend/` to Vercel as a static site with no build step,
+  connected to the `nipun-ag/RedLib` GitHub repository for automatic
+  deploys on push to `main`.
+- Added the custom domain `redlib.bynipun.com` via a Cloudflare CNAME
+  record (DNS only, not proxied, per Vercel's verification
+  requirements).
+- Updated `frontend/js/config.js` to point `API_BASE_URL` at
+  `https://api-redlib.bynipun.com`.
+
+CI/CD:
+- Added `.github/workflows/deploy.yml` to auto-deploy the backend on
+  every push to `main` via SSH into Hetzner, `git pull`, and
+  `systemctl restart redlib`, reusing the same SSH deploy key already
+  established for the Modeval project on the same server.
+- Added a passwordless sudo entry for `systemctl restart redlib` under
+  `/etc/sudoers.d/nipun`, scoped to that single command only, matching
+  the existing pattern used for Modeval. Removed a stale entry for a
+  deprecated `js-automation` project in the same file.
+
+Server security cleanup:
+- Audited all SSH keys present on the Hetzner server. Found and removed
+  a private key (`github_actions`) that had been generated directly on
+  the server and never deleted after its contents were copied into
+  GitHub secrets; private keys should only exist on the machine
+  initiating a connection, never on the server being connected to.
+- Found and removed a duplicate, unlabeled authorized key entry left
+  over from Hetzner's cloud-init provisioning process.
+- Renamed the local personal SSH key pair from the generic
+  `id_ed25519` to `nipun-acer-laptop` for clarity, updating both the
+  local `~/.ssh/config` `IdentityFile` reference and the corresponding
+  label in Hetzner's `authorized_keys`.
+
+Verification:
+- Confirmed `https://redlib.bynipun.com` and
+  `https://api-redlib.bynipun.com/api/stats` both serve correctly with
+  valid HTTPS certificates.
+- Confirmed `POST /api/query` against the live production API returns
+  a complete, correctly synthesized response exercising the full
+  pipeline: Qdrant hybrid retrieval, Cohere rerank, Claude Haiku
+  synthesis.
+- Confirmed the GitHub Actions deploy workflow runs and succeeds on
+  push to `main` for both the frontend (via Vercel's own build log) and
+  the backend (via the workflow's own run log).
+- Confirmed SSH access to Hetzner still works correctly for both the
+  renamed personal key and the GitHub Actions deploy key after the
+  security cleanup, and confirmed Modeval's existing deploy pipeline
+  was unaffected by any of the above changes.
+
+---
+
 ## 2026-07-16
 Resolved two production deployment issues around environment parity and
 dependency assumptions.
