@@ -433,7 +433,6 @@ export function WorkspacePage() {
                             <ResultCard
                               key={result.id}
                               result={result}
-                              showConfidence
                               onOpen={openPrompt}
                             />
                           ))
