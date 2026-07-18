@@ -8,7 +8,6 @@ from typing import Optional, List, Dict, Union
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field
 from llama_index.core.schema import MetadataMode
@@ -27,7 +26,18 @@ from qdrant_client.http.models import (
 )
 from .rag import initialize_pipeline
 
-limiter = Limiter(key_func=get_remote_address)
+
+def get_real_client_ip(request: Request) -> str:
+    """Extract the real visitor IP from the X-Forwarded-For header set by Nginx,
+    falling back to the direct connection address if the header is absent
+    (e.g. in local development without a reverse proxy)."""
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+limiter = Limiter(key_func=get_real_client_ip)
 
 logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"
