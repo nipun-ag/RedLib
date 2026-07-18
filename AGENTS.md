@@ -8,7 +8,7 @@ reproducible classified dataset, then indexes that finalized corpus in
 Qdrant Cloud for retrieval and synthesis.
 
 ## Tech Stack
-- Frontend: Vanilla HTML + CSS + JavaScript
+- Frontend: React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui
 - Backend: FastAPI (Python)
 - RAG Framework: LlamaIndex
 - Vector DB: Qdrant Cloud (hybrid dense + sparse retrieval)
@@ -17,20 +17,19 @@ Qdrant Cloud for retrieval and synthesis.
 - LLM: Anthropic Claude Haiku 4.5
 - Secrets: Doppler
 - Server: Hetzner VPS (Nginx + Gunicorn + systemd)
-- Deploy: GitHub Actions SSH deploy on push to `main`
+- Deploy: GitHub Actions SSH deploy on push to `main` (API); Vercel for frontend
 
 ## Current Frontend/Backend Layout
 Frontend and backend are deployed as separate services.
 
 Frontend:
-- Static frontend assets live in `frontend/`
-- Pages:
-  - `index.html` responsible-use gate
-  - `search.html` main research workspace
-- Shared assets:
-  - `css/style.css`
-  - `js/config.js`
-  - `js/app.js`
+- React app lives in `frontend/` (Vite build → `frontend/dist/`)
+- Routes:
+  - `/` responsible-use gate
+  - `/workspace` research workspace
+  - `/search.html` legacy redirect to `/workspace`
+- Local API calls use the Vite `/api` proxy; production defaults to
+  `https://api-redlib.bynipun.com`
 
 Backend:
 - FastAPI app in `api/app.py`
@@ -39,8 +38,8 @@ Backend:
 
 Local dev:
   Backend: `doppler run -- uvicorn api.app:app --reload --port 8000`
-  Frontend: open `frontend/index.html` directly or serve `frontend/`
-  with any static file server
+  Frontend: `cd frontend && npm install && npm run dev`
+  (Vite serves on port 3000 and proxies `/api` to production by default)
 
 ## File Structure
 ```text
@@ -77,17 +76,19 @@ redlib/
 |  |- CONTEXT.md
 |  |- DESIGN.md
 |  `- PROGRESS.md
-|- frontend/
-|  |- index.html
-|  |- search.html
-|  |- css/
-|  |  `- style.css
-|  `- js/
-|     |- config.js
-|     `- app.js
+|- frontend/               # React + Vite research UI
+|  |- src/
+|  |  |- pages/           # Gate and workspace routes
+|  |  |- components/      # UI composition + shadcn primitives
+|  |  `- lib/             # API client and taxonomy helpers
+|  |- vercel.json         # SPA rewrites for Vercel
+|  `- package.json
+|- .impeccable/
+|  `- design.json         # Machine-readable design-system extensions
 |- requirements.txt
 |- .env.example
 |- .gitignore
+|- PRODUCT.md
 |- AGENTS.md
 `- README.md
 ```
@@ -104,8 +105,11 @@ redlib/
 - LlamaIndex components configured in their own modules and assembled
   in `api/rag.py`
 - Comments explain WHY a decision was made, not what the code does
-- Frontend is implemented as static HTML/CSS/JS with no build step
-- Keep shared dependencies pinned in `requirements.txt` when a version
+- Frontend is React + Vite + TypeScript; keep API access in `src/lib/api.ts`
+- Frontend taxonomy aliases are presentation-only: keep canonical backend
+  category names as state and API values, and resolve user-facing labels
+  through `categoryLabel()` in `src/lib/taxonomy.ts`
+- Keep shared Python dependencies pinned in `requirements.txt` when a version
   is already verified across local and production environments;
   `fastembed==0.8.0` is the confirmed cross-platform baseline for
   Windows/Python 3.13 and Ubuntu/Python 3.12
@@ -235,10 +239,16 @@ Phase 1 - In Development / Production
   schema, and corpus stages, see `docs/ARCHITECTURE.md`.
 - Backend query pipeline is implemented under `api/` and deployed on
   Hetzner behind Nginx at `api-redlib.bynipun.com`
-- Frontend is static HTML/CSS/JS under `frontend/`, deployed to Vercel
-  at `redlib.bynipun.com`; `frontend/js/config.js` points at production
-  by default and must be switched to `http://localhost:8000` for local
-  API work
+- Frontend v2 (branch `v2`) is a React + Vite + shadcn rebuild under
+  `frontend/` with the Ink & Platinum design system; design baseline
+  lives in the normative `docs/DESIGN.md`, machine-readable extensions
+  live in `.impeccable/design.json`, and product context lives in `PRODUCT.md`
+- Technique names use frontend-only display aliases defined in
+  `frontend/src/lib/taxonomy.ts`; canonical taxonomy names remain unchanged
+  in frontend state, API requests/responses, Qdrant, and corpus artifacts
+- Local frontend: `cd frontend && npm run dev` (port 3000, `/api` proxy)
+- Vercel should use Root Directory `frontend`, Build `npm run build`,
+  Output `dist`
 - Corpus stages, in order: fetch snapshots sources; convert builds
   canonical records; audit measures quality; normalize cleans prompts;
   discover proposes taxonomy; classify applies approved labels; ingest
@@ -246,7 +256,6 @@ Phase 1 - In Development / Production
 - `requirements.txt` pins all production dependencies to exact versions
   verified on Windows/Python 3.13 and Ubuntu/Python 3.12, including
   `fastembed==0.8.0` and `slowapi==0.1.10`
-- Deploys run automatically on push to `main`, installing dependencies,
-  restarting systemd, and health-checking the API
-- Gate and workspace visuals follow the Stitch "Obsidian Crimson" dark
-  glass system; design baseline lives in `docs/DESIGN.md`
+- API deploys run automatically on push to `main`, installing
+  dependencies, restarting systemd, and health-checking the API
+- Backend/API contracts were not changed by the v2 frontend rebuild

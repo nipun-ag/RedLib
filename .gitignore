@@ -17,6 +17,11 @@ env/
 dist/
 build/
 
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
 # Raw data — too large for git
 data
 

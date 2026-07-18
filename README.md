@@ -34,9 +34,11 @@ RedLib has two high-level systems:
   Qdrant, reranks them, and produces a short grounded synthesis for
   the user.
 
-The frontend lives in `frontend/` as static HTML, CSS, and JavaScript.
+The frontend lives in `frontend/` as a React + Vite application.
 The backend API lives in `api/app.py`. Detailed implementation notes
 belong in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The frontend's normative Ink & Platinum design specification lives in
+[docs/DESIGN.md](docs/DESIGN.md).
 
 ---
 
@@ -72,7 +74,7 @@ design, and vector ingestion into distinct responsibilities.
 
 | Layer         | Technology                           |
 |---------------|--------------------------------------|
-| Frontend      | Vanilla JS, HTML, plain CSS design system (no build step) |
+| Frontend      | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui |
 | Backend       | FastAPI                              |
 | RAG Framework | LlamaIndex                           |
 | Vector Store  | Qdrant Cloud                         |
@@ -127,7 +129,9 @@ doppler run -- uvicorn api.app:app --reload --port 8000
 Serve the frontend from the `frontend/` directory in a second terminal:
 
 ```bash
-python -m http.server 3000 --directory frontend
+cd frontend
+npm install
+npm run dev
 ```
 
 Then open:
@@ -135,8 +139,9 @@ Then open:
 - Frontend: `http://localhost:3000`
 - Backend API: `http://localhost:8000`
 
-The checked-in `frontend/js/config.js` points at the production API by
-default and must be changed to `http://localhost:8000` for local development.
+In local Vite development, `/api` is proxied to the production API by
+default. Set `VITE_API_BASE_URL` in `frontend/.env.local` if you need a
+different target.
 
 ---
 
@@ -159,7 +164,7 @@ default and must be changed to `http://localhost:8000` for local development.
 - `corpus/classify_corpus.py`: apply the approved taxonomy across the corpus
 - `corpus/ingest.py`: embed the finalized classified corpus into Qdrant
 - `docs/`: architecture, context, design notes, and progress log
-- `frontend/`: static UI
+- `frontend/`: React research UI (Vite + shadcn)
 
 For contributor workflow and repo-specific guardrails, see
 [AGENTS.md](AGENTS.md).
