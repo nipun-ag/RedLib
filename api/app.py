@@ -368,6 +368,9 @@ async def query(request: QueryRequest) -> QueryResponse:
     Routes all queries through the corpus-grounded retrieval pipeline.
     Applies category filter if provided.
     """
+    if request.category_filter:
+        validate_category_name(request.category_filter)
+
     try:
         from .retriever import get_filtered_retriever
         from llama_index.core.query_engine import RetrieverQueryEngine
