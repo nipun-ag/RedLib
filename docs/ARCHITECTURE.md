@@ -12,7 +12,7 @@ RedLib's corpus scope is adversarial jailbreak prompts only: prompts
 that manipulate, override, or bypass LLM safety behavior. Pure harmful
 requests without a jailbreak mechanism are out of scope.
 
-Frontend assets live under `frontend/` as static HTML/CSS/JS.
+Frontend assets live under `frontend/` as a React + Vite application.
 
 ---
 
@@ -62,14 +62,15 @@ redlib/
 |     |- classified.jsonl     # Final corpus handed to ingestion
 |     `- classified_with_subtechniques.jsonl
 |                            # Archive copy with subtechniques preserved
-|- frontend/                  # Static frontend assets
-|  |- index.html
-|  |- search.html
-|  |- css/
-|  |  `- style.css
-|  `- js/
-|     |- config.js
-|     `- app.js
+|- frontend/                  # React + Vite frontend
+|  |- src/
+|  |  |- pages/
+|  |  |- components/
+|  |  `- lib/
+|  |- vercel.json
+|  `- package.json
+|- .impeccable/
+|  `- design.json            # Machine-readable design-system extensions
 |- docs/
 |  |- ARCHITECTURE.md         # This file
 |  |- CONTEXT.md              # Synthesis prompt rules and taxonomy philosophy
@@ -266,6 +267,19 @@ JSON response to frontend
 All user queries go through the same retrieval path. There is no direct
 LLM-only conceptual route.
 
+### Frontend Taxonomy Presentation Boundary
+
+The approved taxonomy names returned by the API are canonical identifiers.
+The React frontend stores and sends those exact names for category filters,
+browse requests, result metadata, and active-category state.
+
+`frontend/src/lib/taxonomy.ts` contains a presentation-only
+`CATEGORY_LABELS` lookup and `categoryLabel()` helper that translate canonical
+names into shorter user-facing labels at render time. The display label is
+never used to construct an API request and is never written to the corpus or
+Qdrant. Unmapped names fall back to the canonical value, allowing new backend
+categories to remain visible before a display alias is added.
+
 ---
 
 ## API Endpoints
@@ -460,18 +474,33 @@ doppler setup
 doppler run -- uvicorn api.app:app --reload --port 8000
 ```
 
-Frontend assets can be opened directly from `frontend/` or served with
-any static file server during local development.
+Frontend assets are developed with Vite:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server proxies `/api` to the configured API target. Production
+builds emit static assets to `frontend/dist/` for Vercel.
+
+The frontend's normative visual and interaction specification lives in
+`docs/DESIGN.md`. `.impeccable/design.json` mirrors the implemented design
+tokens, motion, breakpoints, and representative components for design-aware
+tooling; neither file participates in the production runtime.
 
 ---
 
 ## Deployment
 
 Deployment is split:
-- frontend static assets from `frontend/`
+- frontend React build from `frontend/` on Vercel (Root Directory
+  `frontend`, build `npm run build`, output `dist`, SPA rewrites in
+  `frontend/vercel.json`)
 - FastAPI backend deployed separately
 - Doppler-managed secrets
-- GitHub Actions deploy workflow on push to `main`
+- GitHub Actions deploy workflow on push to `main` for the API
 
 ---
 

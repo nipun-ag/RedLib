@@ -1,6 +1,135 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-18
+Polished remaining accessibility gaps found in end-to-end testing: added a
+visually hidden label for the workspace search field, and raised Clear filter,
+View Full Prompt, and the prompt-modal close control to a 44px minimum target.
+
+## 2026-07-18
+Completed end-to-end frontend testing against the live Vite app and production
+API proxy, and fixed one hydration defect found during the run.
+
+Change:
+- Fixed invalid markup in `TechniqueSidebar` where a loading `Skeleton`
+  (`div`) was nested inside a summary `p`, which caused React hydration
+  warnings in the console
+- Exercised gate, workspace shell, technique rail and display aliases,
+  sources provenance popover, browse pagination, prompt modal, search and
+  category-filtered search, legacy redirects, and API contracts through the
+  Vite `/api` proxy
+
+Why:
+- The invalid nesting produced recurring console errors during workspace
+  category loading and needed to be cleared before final QA sign-off
+
+Verification:
+- Gate: disabled CTA until acknowledgment, live count `168,115`, redirect
+  guard from `/workspace`, persistence into workspace
+- Browse: display label `Obfuscation` while requesting canonical
+  `Obfuscation / Encoding`; Load more appended a second page
+- Search: AI summary, display-label breakdown chips, HIGH confidence badges
+- Filtered search: `category_filter=Role-Based Task Framing` returned 10/10
+  Role-Based Task Framing results
+- Prompt modal: lazy `/api/prompts/{id}` fetch with source footer
+- Sources popover: all 7 Hugging Face dataset links
+- Legacy routes: `/search.html` → `/workspace`, `/index.html` → gate/workspace
+- No hydration errors after the sidebar markup fix
+
+## 2026-07-18
+Folded the design-doc audit follow-ups into `docs/DESIGN.md` and
+`frontend/README.md`: dark-only posture, unused Chart/Recharts boundary,
+search-only confidence, gate/workspace state transitions, provenance
+registry details, known accessibility QA gaps, and frontend source/fallback
+notes.
+
+## 2026-07-18
+Finalized the frontend design-system documentation against the implemented
+React v2 interface before full browser and workflow testing.
+
+Change:
+- Rebuilt `docs/DESIGN.md` as a normative, machine-readable design reference
+  with OKLCH color tokens, typography roles, zero-radius geometry, spacing,
+  component primitives, and six fixed design-system sections
+- Documented the responsible-use gate, responsive workspace shell, technique
+  rail and proportional bars, source-provenance popover, search and browse
+  workflows, result states, prompt dialog, taxonomy aliases, motion, reduced
+  motion, and WCAG 2.2 AA expectations
+- Corrected the stale chart reference: the current interface uses integrated
+  proportional filter bars and no standalone taxonomy chart
+- Added `.impeccable/design.json` with design metadata, motion and breakpoint
+  extensions, and representative self-contained component specimens
+- Linked the finalized specification from `README.md`, `frontend/README.md`,
+  `AGENTS.md`, and `docs/ARCHITECTURE.md`
+
+Why:
+- The prior design file captured the visual direction but was too brief to
+  serve as the implementation contract for final QA or future UI work
+- Final testing needs explicit expected behavior for responsive structure,
+  component states, accessibility, provenance, and frontend-only taxonomy
+  labels
+
+Verification:
+- Documentation and metadata reconciliation only; full frontend testing is
+  intentionally deferred to the next phase
+
+## 2026-07-18
+Added frontend-only display aliases for the eight approved technique
+categories so the workspace can use concise labels without changing taxonomy
+identity or backend behavior.
+
+Change:
+- Added the canonical-to-display `CATEGORY_LABELS` lookup and
+  `categoryLabel()` helper in `frontend/src/lib/taxonomy.ts`
+- Applied display aliases to the sidebar, result cards, prompt modal, browse
+  status and category panel, and search technique breakdown
+- Kept canonical names in frontend state and all `/api/query` and
+  `/api/browse` values
+- Added canonical-name fallback behavior for future unmapped categories
+- Documented the presentation boundary in `AGENTS.md`, `docs/DESIGN.md`, and
+  `docs/ARCHITECTURE.md`
+
+Why:
+- Short labels improve scanning, but backend taxonomy names must remain the
+  stable keys used by corpus records, Qdrant metadata, validation, and API
+  filters
+
+Verification:
+- `npm run build`
+
+## 2026-07-18
+Replaced the bland Sources hover tooltip with a clickable provenance
+popover. Each corpus source now shows a readable label, Hugging Face
+dataset id, and an external link taken from `corpus/fetch_corpus.py`
+SOURCE_REGISTRY.
+
+## 2026-07-18
+Removed the sidebar taxonomy bar chart from the v2 workspace. It duplicated
+counts, truncated labels, and competed with the filter list. Technique rows
+now carry proportional share bars, a compact `N families · M records`
+summary, and clearer active-state outlining so the sidebar stays navigational.
+
+## 2026-07-18
+Rebuilt the frontend as a React + Vite + TypeScript app on branch `v2`
+while leaving backend and API contracts untouched.
+
+Why:
+- Migrate the vanilla gate + workspace to a maintainable React stack
+- Replace Obsidian Crimson with the confirmed Ink & Platinum identity
+- Preserve the full research workflow: gate, search, browse, pagination,
+  filters, and full-prompt inspection
+
+Change:
+- Scaffolded Vite React TS in `frontend/` with Tailwind v4 and shadcn/ui
+- Implemented `/` gate and `/workspace` research console, plus legacy
+  `/search.html` redirect
+- Wired live `/api/stats`, `/api/categories`, `/api/query`, `/api/browse`,
+  and `/api/prompts/{id}` through a typed client and Vite proxy
+- Added liquid SVG atmosphere, taxonomy chart, confidence labels,
+  technique breakdown chips, and Last Sync stats
+- Updated `docs/DESIGN.md`, `PRODUCT.md`, and `AGENTS.md` for the new
+  frontend system
+
+## 2026-07-18
 Removed the unused `data/corpus/classified_test.jsonl` experiment artifact
 and `data/corpus/reclassify_unclear_debug/` output directory. Clarified in
 `docs/ARCHITECTURE.md` that subtechnique coverage in the archive is

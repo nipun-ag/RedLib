@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-18T16:19:45.3723057Z",
+  "title": "Design System: RedLib Ink & Platinum",
+  "extensions": {
+    "colorMeta": {
+      "vault-black": {
+        "role": "neutral",
+        "displayName": "Vault Black",
+        "canonical": "oklch(0.08 0 0)",
+        "tonalRamp": [
+          "oklch(0.08 0 0)",
+          "oklch(0.15 0 0)",
+          "oklch(0.27 0 0)",
+          "oklch(0.39 0 0)",
+          "oklch(0.52 0 0)",
+          "oklch(0.66 0 0)",
+          "oklch(0.81 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "platinum-ink": {
+        "role": "neutral",
+        "displayName": "Platinum Ink",
+        "canonical": "oklch(0.92 0.012 170)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 170)",
+          "oklch(0.27 0.012 170)",
+          "oklch(0.39 0.012 170)",
+          "oklch(0.52 0.012 170)",
+          "oklch(0.66 0.012 170)",
+          "oklch(0.78 0.012 170)",
+          "oklch(0.92 0.012 170)",
+          "oklch(0.97 0.008 170)"
+        ]
+      },
+      "panel-ink": {
+        "role": "neutral",
+        "displayName": "Panel Ink",
+        "canonical": "oklch(0.135 0.012 170)",
+        "tonalRamp": [
+          "oklch(0.10 0.012 170)",
+          "oklch(0.135 0.012 170)",
+          "oklch(0.22 0.012 170)",
+          "oklch(0.34 0.012 170)",
+          "oklch(0.48 0.012 170)",
+          "oklch(0.63 0.012 170)",
+          "oklch(0.79 0.012 170)",
+          "oklch(0.95 0.008 170)"
+        ]
+      },
+      "oxidized-teal": {
+        "role": "primary",
+        "displayName": "Oxidized Teal",
+        "canonical": "oklch(0.52 0.086 170)",
+        "tonalRamp": [
+          "oklch(0.15 0.035 170)",
+          "oklch(0.25 0.05 170)",
+          "oklch(0.36 0.068 170)",
+          "oklch(0.44 0.078 170)",
+          "oklch(0.52 0.086 170)",
+          "oklch(0.64 0.075 170)",
+          "oklch(0.78 0.05 170)",
+          "oklch(0.94 0.02 170)"
+        ]
+      },
+      "muted-platinum": {
+        "role": "neutral",
+        "displayName": "Muted Platinum",
+        "canonical": "oklch(0.72 0.025 170)",
+        "tonalRamp": [
+          "oklch(0.15 0.015 170)",
+          "oklch(0.26 0.02 170)",
+          "oklch(0.38 0.025 170)",
+          "oklch(0.5 0.025 170)",
+          "oklch(0.62 0.025 170)",
+          "oklch(0.72 0.025 170)",
+          "oklch(0.84 0.018 170)",
+          "oklch(0.95 0.01 170)"
+        ]
+      },
+      "merlot-caution": {
+        "role": "tertiary",
+        "displayName": "Merlot Caution",
+        "canonical": "oklch(0.42 0.12 25)",
+        "tonalRamp": [
+          "oklch(0.15 0.04 25)",
+          "oklch(0.24 0.07 25)",
+          "oklch(0.33 0.1 25)",
+          "oklch(0.42 0.12 25)",
+          "oklch(0.54 0.11 25)",
+          "oklch(0.67 0.09 25)",
+          "oklch(0.81 0.055 25)",
+          "oklch(0.95 0.02 25)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Editorial Display",
+        "purpose": "Brand identity, corpus counts, and important values."
+      },
+      "headline": {
+        "displayName": "Editorial Headline",
+        "purpose": "Workspace identity and prompt-detail titles."
+      },
+      "title": {
+        "displayName": "Finding Title",
+        "purpose": "Summary and section-level findings."
+      },
+      "body": {
+        "displayName": "Research UI Body",
+        "purpose": "Controls, excerpts, explanations, and supporting copy."
+      },
+      "label": {
+        "displayName": "Technical Label",
+        "purpose": "Metadata, counts, categories, actions, and identifiers."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Primary state and hover transitions."
+      },
+      {
+        "name": "ease-out-quart",
+        "value": "cubic-bezier(0.25, 1, 0.5, 1)",
+        "purpose": "Secondary restrained transitions."
+      },
+      {
+        "name": "state-transition",
+        "value": "150-300ms",
+        "purpose": "Hover, focus, selected, and disclosure feedback."
+      },
+      {
+        "name": "count-up",
+        "value": "900ms cubic ease-out",
+        "purpose": "Live corpus and category counts."
+      },
+      {
+        "name": "liquid-drift",
+        "value": "18-22s ease-in-out alternate",
+        "purpose": "Decorative background atmosphere only."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Oxidized-teal primary action with sharp geometry and visible focus.",
+      "html": "<button class=\"ds-button-primary\">SEARCH</button>",
+      "css": ".ds-button-primary { min-height: 48px; padding: 0 32px; border: 1px solid transparent; border-radius: 0; background: var(--primary); color: var(--primary-foreground); font: 500 14px/1.25 var(--font-sans); transition: background-color 200ms var(--ease-out-quart), transform 150ms var(--ease-out-quart); } .ds-button-primary:hover { background: color-mix(in oklch, var(--primary), white 8%); } .ds-button-primary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; } .ds-button-primary:active { transform: translateY(1px); } .ds-button-primary:disabled { pointer-events: none; opacity: 0.5; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action used for pagination and compact utilities.",
+      "html": "<button class=\"ds-button-outline\">LOAD MORE</button>",
+      "css": ".ds-button-outline { min-height: 48px; padding: 0 24px; border: 1px solid var(--border); border-radius: 0; background: var(--background); color: var(--foreground); font: 500 12px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; transition: background-color 200ms var(--ease-out-quart), border-color 200ms var(--ease-out-quart); } .ds-button-outline:hover { border-color: color-mix(in oklch, var(--primary), transparent 55%); background: var(--muted); } .ds-button-outline:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; } .ds-button-outline:disabled { pointer-events: none; opacity: 0.5; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Large research query field inside a bordered panel.",
+      "html": "<label class=\"ds-search\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-3.5-3.5\"></path></svg><input placeholder=\"Analyze adversarial prompt patterns...\" /></label>",
+      "css": ".ds-search { display: flex; min-height: 64px; align-items: center; padding: 0 16px; border: 1px solid var(--border); border-radius: 0; background: var(--card); transition: border-color 200ms var(--ease-out-quart); } .ds-search:focus-within { border-color: color-mix(in oklch, var(--primary), transparent 60%); } .ds-search svg { width: 20px; height: 20px; margin-right: 12px; fill: none; stroke: var(--muted-foreground); stroke-width: 2; } .ds-search input { width: 100%; height: 48px; border: 0; outline: 0; background: transparent; color: var(--foreground); font: 400 16px/1.55 var(--font-sans); } .ds-search input::placeholder { color: var(--muted-foreground); }"
+    },
+    {
+      "name": "Technique Filter",
+      "kind": "nav",
+      "description": "Canonical category filter with a proportional data bar and compact display alias.",
+      "html": "<button class=\"ds-technique\"><span class=\"ds-technique-bar\"></span><span class=\"ds-technique-name\">FICTIONAL FRAMING</span><span class=\"ds-technique-count\">55,707</span></button>",
+      "css": ".ds-technique { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr auto; width: 100%; min-height: 48px; gap: 12px; align-items: start; overflow: hidden; padding: 12px; border: 0; border-radius: 0; background: transparent; color: var(--muted-foreground); text-align: left; transition: color 200ms var(--ease-out-quart), background-color 200ms var(--ease-out-quart); } .ds-technique:hover { background: color-mix(in oklch, var(--secondary), transparent 50%); color: var(--foreground); } .ds-technique:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; } .ds-technique-bar { position: absolute; inset: 0 auto 0 0; z-index: -1; width: 70%; background: color-mix(in oklch, var(--primary), transparent 90%); } .ds-technique-name { font: 400 14px/1.35 var(--font-sans); } .ds-technique-count { color: color-mix(in oklch, var(--platinum), transparent 20%); font: 400 12px/1.35 var(--font-mono); font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Result Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Grounded prompt excerpt with taxonomy, confidence, source, and explicit inspection.",
+      "html": "<article class=\"ds-result\"><div class=\"ds-result-meta\"><span class=\"ds-chip\">ROLE PLAY</span><span class=\"ds-source\">WildJailbreak</span></div><p>Prompt excerpt appears here while the full record remains behind explicit inspection.</p><button>VIEW FULL PROMPT →</button></article>",
+      "css": ".ds-result { padding: 20px; border: 1px solid var(--border); border-radius: 0; background: var(--card); color: var(--foreground); transition: transform 300ms var(--ease-out-expo), border-color 300ms var(--ease-out-expo); } .ds-result:hover { transform: translateY(-2px); border-color: color-mix(in oklch, var(--primary), transparent 70%); } .ds-result-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; } .ds-chip { padding: 4px 10px; border: 1px solid color-mix(in oklch, var(--primary), transparent 70%); background: color-mix(in oklch, var(--primary), transparent 90%); color: var(--primary); font: 400 11px/1 var(--font-mono); letter-spacing: 0.12em; } .ds-source { color: var(--muted-foreground); font: 400 14px/1.4 var(--font-sans); } .ds-result p { margin: 0 0 16px; color: color-mix(in oklch, var(--foreground), transparent 10%); font: 400 14px/1.6 var(--font-sans); } .ds-result button { padding: 0; border: 0; background: transparent; color: var(--primary); font: 500 12px/1 var(--font-mono); letter-spacing: 0.12em; } .ds-result button:hover { color: var(--foreground); } .ds-result button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }"
+    },
+    {
+      "name": "Source Provenance Trigger",
+      "kind": "button",
+      "refersTo": "panel",
+      "description": "Interactive statistic panel that discloses linked corpus provenance.",
+      "html": "<button class=\"ds-source-trigger\"><span class=\"ds-source-label\">SOURCES</span><strong>7</strong><small>OPEN DATASET PROVENANCE →</small></button>",
+      "css": ".ds-source-trigger { display: grid; width: 100%; gap: 8px; padding: 20px; border: 1px solid var(--border); border-radius: 0; background: var(--card); color: var(--foreground); text-align: left; transition: transform 300ms var(--ease-out-expo), border-color 300ms var(--ease-out-expo); } .ds-source-trigger:hover { transform: translateY(-2px); border-color: color-mix(in oklch, var(--primary), transparent 65%); } .ds-source-trigger:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; } .ds-source-label { color: var(--muted-foreground); font: 500 12px/1 var(--font-mono); letter-spacing: 0.12em; } .ds-source-trigger strong { font: 400 30px/1.1 var(--font-serif); } .ds-source-trigger small { margin-top: 4px; color: var(--muted-foreground); font: 400 12px/1.4 var(--font-sans); } .ds-source-trigger:hover small { color: var(--primary); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Institutional Evidence Vault",
+    "overview": "RedLib is a dark, high-density research instrument for adversarial AI safety work. Its Ink & Platinum system combines vault-black space, cool metallic text, oxidized-teal signals, and sharp architectural borders. The interface should feel authoritative and premium because evidence, provenance, and state are handled precisely—not because the surface is theatrical.",
+    "keyCharacteristics": [
+      "Restrained dark product palette with one operational teal signal",
+      "Sharp zero-radius geometry and platinum hairlines",
+      "Editorial serif for brand and findings; technical sans and mono for work",
+      "Provenance-visible, corpus-grounded interactions",
+      "Dense but calm responsive layouts",
+      "Motion that explains state, quantity, or attention"
+    ],
+    "rules": [
+      {
+        "name": "The One Signal Rule",
+        "body": "Oxidized teal marks action, selection, focus, or meaningful data. If it does none of those jobs, remove it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Editorial Boundary Rule",
+        "body": "Newsreader belongs to brand, findings, and important values. Never use it for buttons, input text, tabs, filter rows, or technical metadata.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Evidence Rule",
+        "body": "Shadows do not make ordinary content important. Hierarchy must come from placement, typography, borders, and semantic color.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the Ink & Platinum palette and use oxidized teal only for action, selection, focus, and meaningful data.",
+      "Do use sharp zero-radius geometry and 1px platinum hairlines throughout.",
+      "Do keep provenance visible through source labels, dataset IDs, counts, confidence, and direct dataset links.",
+      "Do preserve canonical taxonomy names as data and API identifiers while resolving short labels only through categoryLabel().",
+      "Do preserve keyboard behavior, visible focus, polite announcements, and reduced-motion alternatives."
+    ],
+    "donts": [
+      "Don't create a generic AI SaaS dashboard or add fake operational metrics.",
+      "Don't use neon cyberpunk styling, decorative glass everywhere, or visual effects that compete with research tasks.",
+      "Don't add charts when the filter rows and counts communicate the same information more directly.",
+      "Don't send a display alias to the API, persist it as taxonomy data, or reverse-map it into a canonical category.",
+      "Don't introduce decorative motion, bounce/elastic easing, or content that remains hidden until an animation completes."
+    ]
+  }
+}
