@@ -303,14 +303,26 @@ Response:
 ```
 
 Implementation details:
-- `category_filter` is applied as a metadata filter on `technique`
+- `category_filter` is validated with `validate_category_name` before
+  any retrieval or LLM work begins
+- When `category_filter` is set, `/api/query` builds an isolated
+  per-request `RetrieverQueryEngine` via `get_filtered_retriever`
+  rather than mutating shared retriever `_filters`
+- Unfiltered requests reuse the shared `app.state.query_engine`
 - `prompt_excerpt` is built from the node body, not from metadata
 - `query_type` is always `"semantic"` because all queries use the same
   corpus-grounded retrieval path
+- `QueryRequest.query` is constrained to `min_length=1`, `max_length=1000`
+- Rate-limited to 10 requests per minute per real client IP
+  (`X-Forwarded-For` via `get_real_client_ip`)
+- If synthesis returns a refusal phrase, `is_refusal` /
+  `build_fallback_summary` substitute a deterministic technique summary
 
 ### GET /api/categories
 Returns the approved taxonomy categories and live corpus counts used by
-the frontend filter sidebar.
+the frontend filter sidebar. Counts come from eight filtered Qdrant
+`count()` calls against the shared `app.state.qdrant_client`, not a
+full-collection scroll.
 
 ### GET /api/browse
 Direct category-browsing endpoint backed by Qdrant scroll. This route
@@ -355,9 +367,11 @@ Implementation details:
 
 ### GET /api/prompts/{prompt_id}
 Fetches one full prompt on demand for explicit result inspection.
+Rate-limited to 30 requests per minute per real client IP.
 
 ### GET /api/stats
 Returns corpus statistics for the frontend stats bar.
+`total_sources` is currently hardcoded to `7` to match `SOURCE_REGISTRY`.
 
 ---
 

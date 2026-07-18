@@ -230,33 +230,53 @@ After every session:
 7. Run `git add . && git commit -m "[type]: description" && git push`
 
 ## Current Project State
-Phase 1 - In Development
-- Backend query pipeline is implemented under `api/`
+Phase 1 - In Development / Production
+- Backend query pipeline is implemented under `api/` and deployed on
+  Hetzner behind Nginx at `api-redlib.bynipun.com`
+- Frontend is static HTML/CSS/JS under `frontend/`, deployed to Vercel
+  at `redlib.bynipun.com`; `frontend/js/config.js` points at production
+  by default and must be switched to `http://localhost:8000` for local
+  API work
 - All user queries are corpus-grounded through the same retrieval path;
   there is no direct conceptual LLM-only route
-- Full prompt inspection is lazy-loaded through a dedicated backend
-  endpoint; search results stay excerpt-based
-- Corpus architecture is organized around a staged local workflow:
-  fetch, convert, audit, normalize, discover taxonomy, classify, ingest
-- `corpus/fetch_corpus.py` is implemented as an acquisition-only raw snapshot stage
-- `corpus/convert_sources.py` is implemented as a structural conversion stage
-- `corpus/audit_corpus.py` is implemented as a read-only canonical corpus quality analysis stage
-- `corpus/normalize_corpus.py` is implemented as a deterministic provenance-preserving cleanup stage
-- `corpus/discover_taxonomy.py` is implemented as an LLM-assisted, source-aware, stratified iterative taxonomy proposal stage
-- `corpus/corpus_sampling.py` centralizes the deterministic source-aware stratified sampling logic shared by discovery and experiments
-- `corpus/classify_corpus.py` is implemented as a corpus-wide taxonomy application stage that produces the final `data/corpus/classified.jsonl` corpus with subtechniques removed and preserves `data/corpus/classified_with_subtechniques.jsonl` as an archive copy
-- `corpus/ingest.py` directly consumes finalized `data/corpus/classified.jsonl` artifacts for embedding into Qdrant
-- Prompt text lives in the `TextNode` body; metadata stores only `source`, `technique`, and `prompt_id`
-- `requirements.txt` now pins `fastembed==0.8.0`, the same verified
-  version used successfully in both local Windows development and the
-  Hetzner production server on Python 3.12 Linux
-- Frontend assets are implemented under `frontend/`
-- `frontend/index.html` now renders the responsible-use gate with local-storage acknowledgment persistence
-- `frontend/search.html` now renders the main research interface with a glass sidebar, live stats bar, search/browse mode controls, and result panels
-- `frontend/js/config.js` remains the only source of `API_BASE_URL`
-- `frontend/js/app.js` owns all workspace behavior in plain JavaScript
-- Search mode calls `POST /api/query` and renders an AI summary card plus excerpt-based result cards with confidence signals
-- Browse mode is wired for cursor-based `GET /api/browse` pagination and renders raw corpus cards without AI summary or confidence scoring
-- Full prompt inspection remains lazy-loaded through the modal flow backed by `GET /api/prompts/{prompt_id}`
-- Gate and workspace visuals now follow the Stitch "Obsidian Crimson" dark glass system adapted to RedLib's zero-radius constraints
-- The frontend design system is now documented in `docs/DESIGN.md` as the living baseline for future UI work
+- Filtered `/api/query` requests build an isolated per-request
+  `RetrieverQueryEngine` via `get_filtered_retriever`; shared retriever
+  state is never mutated at request time
+- `/api/query` is rate-limited to 10/minute and
+  `/api/prompts/{prompt_id}` to 30/minute per real client IP via
+  slowapi (`X-Forwarded-For`); stats/categories/browse remain unlimited
+- CORS is restricted to `https://redlib.bynipun.com` with
+  `allow_credentials=False`
+- `QueryRequest.query` is bounded to 1–1000 chars; `category_filter` is
+  validated with the same `validate_category_name` used by browse
+- Synthesizer refusals are intercepted in `api/app.py` and replaced with
+  a deterministic `technique_counts` fallback summary
+- One shared `app.state.qdrant_client` is created at startup; category
+  counts use eight filtered `count()` calls, not a full-collection scroll
+- Full prompt inspection is lazy-loaded through
+  `GET /api/prompts/{prompt_id}`; search results stay excerpt-based
+- Category sidebar clicks always clear the search box and enter browse
+  mode; typed search while a category is already active still combines
+- `corpus/fetch_corpus.py` is an acquisition-only stage that snapshots
+  public datasets into immutable local raw storage
+- `corpus/convert_sources.py` structurally converts supported raw formats
+  into canonical JSONL records while preserving source provenance
+- `corpus/audit_corpus.py` performs read-only quality analysis of the
+  canonical corpus without modifying source records
+- `corpus/normalize_corpus.py` applies deterministic,
+  provenance-preserving prompt cleanup
+- `corpus/corpus_sampling.py` centralizes deterministic, source-aware
+  stratified sampling shared by discovery and classification experiments
+- `corpus/discover_taxonomy.py` performs LLM-assisted, source-aware,
+  iterative discovery of candidate attack families
+- `corpus/classify_corpus.py` applies the human-approved taxonomy across
+  the normalized corpus and writes classified corpus artifacts
+- `corpus/ingest.py` consumes the finalized `classified.jsonl` artifact
+  for embedding and Qdrant writes
+- `requirements.txt` pins all production dependencies to exact versions
+  verified on Windows/Python 3.13 and Ubuntu/Python 3.12, including
+  `fastembed==0.8.0` and `slowapi==0.1.10`
+- Deploy on push to `main` installs deps, restarts systemd, and health-
+  checks `localhost:8001/api/stats` after a 15s startup wait
+- Gate and workspace visuals follow the Stitch "Obsidian Crimson" dark
+  glass system; design baseline lives in `docs/DESIGN.md`

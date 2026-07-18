@@ -43,6 +43,22 @@ The synthesizer DOES:
 - Note dataset distribution or confidence signals when useful
 - Connect observed prompt patterns to the nearest approved RedLib category when applicable
 - Treat returned results as relevant and describe the common pattern they show
+- Never refuse to analyze retrieved results or lecture about corpus composition;
+  the prompt includes a "Non-Negotiable: No Refusals" section framing the
+  corpus as pre-authorized research material
+
+---
+
+## Refusal Safety Net
+Prompt compliance alone is not enough: Claude Haiku can still refuse when
+retrieved chunks contain disturbing subject matter plus jailbreak framing.
+
+`api/app.py` therefore post-checks synthesis output before returning it:
+1. `is_refusal()` matches known refusal phrases in the answer text
+2. On a match, `build_fallback_summary(technique_counts)` builds a
+   deterministic summary from retrieved node metadata only
+3. `/api/query` substitutes that fallback into `QueryResponse.answer`
+   and logs a warning with the first 200 characters of the refused text
 
 ---
 
