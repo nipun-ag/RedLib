@@ -331,8 +331,11 @@ def get_cached_category_items() -> list[CategoryItem]:
 async def lifespan(app: FastAPI):
     # Startup
     try:
-        query_engine = initialize_pipeline()
+        query_engine, index_obj, reranker, synthesizer = initialize_pipeline()
         app.state.query_engine = query_engine
+        app.state.index_obj = index_obj
+        app.state.reranker = reranker
+        app.state.synthesizer = synthesizer
         logger.info("FastAPI app initialized with query engine")
     except Exception as e:
         logger.error("Failed to initialize pipeline on startup", exc_info=True)
@@ -366,35 +369,26 @@ async def query(request: QueryRequest) -> QueryResponse:
     Applies category filter if provided.
     """
     try:
-        # Build metadata filters if category_filter provided
-        filters = None
-        retriever_filters = []
-        if request.category_filter:
-            client = get_qdrant_client()
-            ensure_keyword_payload_index(client, "technique")
-            filters = MetadataFilters(
-                filters=[
-                    MetadataFilter(
-                        key="technique",
-                        value=request.category_filter,
-                        operator=FilterOperator.EQ,
-                    )
-                ]
-            )
+        from .retriever import get_filtered_retriever
+        from llama_index.core.query_engine import RetrieverQueryEngine
 
-            fusion_retriever = app.state.query_engine.retriever
-            retriever_filters = [
-                (retriever, getattr(retriever, "_filters", None))
-                for retriever in getattr(fusion_retriever, "_retrievers", [])
-            ]
-            for retriever, _ in retriever_filters:
-                retriever._filters = filters
+        if request.category_filter:
+            filtered_retriever = get_filtered_retriever(
+                app.state.index_obj, request.category_filter
+            )
+            engine = RetrieverQueryEngine.from_args(
+                retriever=filtered_retriever,
+                node_postprocessors=[app.state.reranker],
+                response_synthesizer=app.state.synthesizer,
+            )
+        else:
+            engine = app.state.query_engine
 
         # Run query in thread executor (query_engine.query is synchronous)
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
-            lambda: app.state.query_engine.query(request.query),
+            lambda: engine.query(request.query),
         )
 
         # Build results array and technique breakdown
@@ -438,9 +432,6 @@ async def query(request: QueryRequest) -> QueryResponse:
     except Exception as e:
         logger.error("Query pipeline error", exc_info=True)
         raise HTTPException(status_code=500, detail="Query pipeline error")
-    finally:
-        for retriever, original_filters in retriever_filters:
-            retriever._filters = original_filters
 
 
 @app.get("/api/categories")

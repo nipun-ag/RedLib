@@ -48,22 +48,17 @@ def get_vector_store() -> Any:
         raise
 
 
-def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
+def get_retriever(embed_model: Any, top_k: int = 20) -> tuple[Any, Any]:
     """Configure hybrid retriever with dense + sparse search and RRF.
 
-    Args:
-        embed_model: Configured OpenAIEmbedding object
-        top_k: Number of results to retrieve from each search type
-
     Returns:
-        Configured QueryFusionRetriever
+        Tuple of (QueryFusionRetriever, VectorStoreIndex). The index is
+        returned so filtered per-request retrievers can be built later
+        without reconnecting to Qdrant or rebuilding shared state.
     """
     candidate_top_k = max(top_k, 20)
-
-    # Get vector store (Qdrant Cloud with hybrid search)
     vector_store = get_vector_store()
 
-    # Create VectorStoreIndex
     from llama_index.core import VectorStoreIndex
     from llama_index.core.retrievers import QueryFusionRetriever, VectorIndexRetriever
 
@@ -71,19 +66,15 @@ def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
         vector_store=vector_store, embed_model=embed_model
     )
 
-    # Create dense retriever
     dense_retriever = VectorIndexRetriever(
         index=index_obj, similarity_top_k=candidate_top_k
     )
-
-    # Create sparse retriever through the index for LlamaIndex 0.14.22 compatibility.
     sparse_retriever = index_obj.as_retriever(
         similarity_top_k=candidate_top_k,
         vector_store_query_mode="sparse",
         sparse_top_k=candidate_top_k,
     )
 
-    # Combine into QueryFusionRetriever with RRF
     retriever = QueryFusionRetriever(
         retrievers=[dense_retriever, sparse_retriever],
         mode="reciprocal_rerank",
@@ -93,7 +84,52 @@ def get_retriever(embed_model: Any, top_k: int = 20) -> Any:
     )
 
     logger.info(f"QueryFusionRetriever configured with top_k={candidate_top_k}")
-    return retriever
+    return retriever, index_obj
+
+
+def get_filtered_retriever(index_obj: Any, category_filter: str, top_k: int = 20) -> Any:
+    """Build a fresh, isolated QueryFusionRetriever scoped to one category.
+
+    Unlike mutating a shared retriever's _filters attribute mid-request,
+    this constructs entirely new retriever instances from the shared,
+    read-only index_obj. Concurrent requests with different filters
+    cannot interfere with each other because no shared object is mutated.
+    """
+    from llama_index.core.retrievers import QueryFusionRetriever, VectorIndexRetriever
+    from llama_index.core.vector_stores import FilterOperator, MetadataFilter, MetadataFilters
+
+    candidate_top_k = max(top_k, 20)
+
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(
+                key="technique",
+                value=category_filter,
+                operator=FilterOperator.EQ,
+            )
+        ]
+    )
+
+    dense_retriever = VectorIndexRetriever(
+        index=index_obj, similarity_top_k=candidate_top_k, filters=filters
+    )
+    sparse_retriever = index_obj.as_retriever(
+        similarity_top_k=candidate_top_k,
+        vector_store_query_mode="sparse",
+        sparse_top_k=candidate_top_k,
+        filters=filters,
+    )
+
+    filtered_retriever = QueryFusionRetriever(
+        retrievers=[dense_retriever, sparse_retriever],
+        mode="reciprocal_rerank",
+        similarity_top_k=candidate_top_k,
+        num_queries=1,
+        use_async=False,
+    )
+
+    logger.info(f"Filtered QueryFusionRetriever built for category={category_filter}")
+    return filtered_retriever
 
 
 def get_reranker(top_n: int = 10) -> Any:
