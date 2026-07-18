@@ -153,6 +153,50 @@ def build_prompt_excerpt(text: str) -> str:
     return excerpt
 
 
+REFUSAL_PATTERNS = [
+    "i cannot provide",
+    "i cannot analyze",
+    "i can't provide",
+    "i can't analyze",
+    "i will not provide",
+    "i'm not able to",
+    "i am not able to",
+    "i'm unable to",
+    "i am unable to",
+    "does not contain jailbreak prompts suitable",
+]
+
+
+def is_refusal(answer: str) -> bool:
+    """Detect if the synthesizer output is a refusal rather than analysis."""
+    lowered = answer.lower()
+    return any(pattern in lowered for pattern in REFUSAL_PATTERNS)
+
+
+def build_fallback_summary(technique_counts: Dict[str, int]) -> str:
+    """Deterministic fallback summary built from real retrieved metadata,
+    used when the LLM synthesis returns a refusal instead of analysis."""
+    if not technique_counts:
+        return "No dominant technique pattern was identified in the retrieved results."
+
+    sorted_techniques = sorted(technique_counts.items(), key=lambda item: item[1], reverse=True)
+    dominant_technique, dominant_count = sorted_techniques[0]
+    total = sum(technique_counts.values())
+
+    if len(sorted_techniques) == 1:
+        return (
+            f"The retrieved prompts are classified under {dominant_technique}, "
+            f"appearing in {dominant_count} of {total} results."
+        )
+
+    other_names = ", ".join(name for name, _ in sorted_techniques[1:])
+    return (
+        f"{dominant_technique} is the dominant pattern in this result set, "
+        f"appearing in {dominant_count} of {total} results, with additional "
+        f"overlap into {other_names}."
+    )
+
+
 def validate_category_name(category: str) -> None:
     """Reject categories that are not in the approved taxonomy."""
     approved_categories = {name for name, _ in TECHNIQUE_CATEGORIES}
@@ -424,8 +468,13 @@ async def query(request: QueryRequest) -> QueryResponse:
             )
             results.append(result_card)
 
+        answer_text = response.response or ""
+        if is_refusal(answer_text):
+            logger.warning(f"Synthesizer returned a refusal, using fallback summary. Original: {answer_text[:200]}")
+            answer_text = build_fallback_summary(technique_counts)
+
         return QueryResponse(
-            answer=response.response or "",
+            answer=answer_text,
             results=results,
             technique_breakdown=technique_counts,
             result_count=len(results),
