@@ -34,11 +34,8 @@ def get_real_client_ip(request: Request) -> str:
     (e.g. in local development without a reverse proxy)."""
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        resolved_ip = forwarded_for.split(",")[0].strip()
-    else:
-        resolved_ip = request.client.host if request.client else "unknown"
-    logger.warning(f"[RATE LIMIT DEBUG] Resolved client IP: {resolved_ip}")
-    return resolved_ip
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 limiter = Limiter(key_func=get_real_client_ip)
