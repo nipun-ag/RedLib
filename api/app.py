@@ -219,17 +219,16 @@ def parse_scroll_cursor(cursor: Optional[str]) -> Optional[Union[int, str]]:
     return cursor
 
 
-def get_category_total(category: str) -> int:
+def get_category_total(category: str, client: QdrantClient) -> int:
     """Return the live count for one approved category using cached counts when available."""
-    for item in get_cached_category_items():
+    for item in get_cached_category_items(client):
         if item.name == category:
             return item.count
     return 0
 
 
-def get_prompt_by_id(prompt_id: str) -> PromptResponse:
+def get_prompt_by_id(prompt_id: str, client: QdrantClient) -> PromptResponse:
     """Fetch a single prompt by metadata prompt_id directly from Qdrant."""
-    client = get_qdrant_client()
     ensure_keyword_payload_index(client, "prompt_id")
 
     records, _ = client.scroll(
@@ -261,38 +260,28 @@ def get_prompt_by_id(prompt_id: str) -> PromptResponse:
     )
 
 
-def get_category_items() -> list[CategoryItem]:
+def get_category_items(client: QdrantClient) -> list[CategoryItem]:
     """Fetch live corpus counts for each technique category from Qdrant."""
-    client = get_qdrant_client()
-    technique_counts = {
-        technique_name: 0 for technique_name, _ in TECHNIQUE_CATEGORIES
-    }
-
-    next_page_offset = None
-    while True:
-        records, next_page_offset = client.scroll(
-            collection_name=QDRANT_COLLECTION_NAME,
-            limit=1000,
-            offset=next_page_offset,
-            with_payload=True,
-            with_vectors=False,
-        )
-
-        for record in records:
-            payload = record.payload or {}
-            technique_name = payload.get("technique")
-            if technique_name in technique_counts:
-                technique_counts[technique_name] += 1
-
-        if next_page_offset is None:
-            break
+    ensure_keyword_payload_index(client, "technique")
 
     categories: list[CategoryItem] = []
     for technique_name, icon in TECHNIQUE_CATEGORIES:
+        count_result = client.count(
+            collection_name=QDRANT_COLLECTION_NAME,
+            count_filter=QdrantFilter(
+                must=[
+                    FieldCondition(
+                        key="technique",
+                        match=MatchValue(value=technique_name),
+                    )
+                ]
+            ),
+            exact=True,
+        )
         categories.append(
             CategoryItem(
                 name=technique_name,
-                count=technique_counts[technique_name],
+                count=count_result.count,
                 icon=icon,
             )
         )
@@ -304,12 +293,12 @@ def browse_category(
     category: str,
     cursor: Optional[str],
     limit: int,
+    client: QdrantClient,
 ) -> BrowseResponse:
     """Scroll Qdrant directly for deterministic category browsing."""
-    client = get_qdrant_client()
     ensure_keyword_payload_index(client, "technique")
 
-    total = get_category_total(category)
+    total = get_category_total(category, client)
     if total == 0:
         raise LookupError(category)
 
@@ -351,7 +340,7 @@ def browse_category(
     )
 
 
-def get_cached_category_items() -> list[CategoryItem]:
+def get_cached_category_items(client: QdrantClient) -> list[CategoryItem]:
     """Return cached category counts when fresh, otherwise refresh them."""
     now = time.monotonic()
 
@@ -361,7 +350,7 @@ def get_cached_category_items() -> list[CategoryItem]:
         if cached_items is not None and now < expires_at:
             return list(cached_items)
 
-    categories = get_category_items()
+    categories = get_category_items(client)
 
     with CATEGORY_CACHE_LOCK:
         CATEGORY_CACHE["items"] = list(categories)
@@ -375,6 +364,7 @@ def get_cached_category_items() -> list[CategoryItem]:
 async def lifespan(app: FastAPI):
     # Startup
     try:
+        app.state.qdrant_client = get_qdrant_client()
         query_engine, index_obj, reranker, synthesizer = initialize_pipeline()
         app.state.query_engine = query_engine
         app.state.index_obj = index_obj
@@ -493,7 +483,10 @@ async def get_categories() -> CategoriesResponse:
     """
     try:
         loop = asyncio.get_event_loop()
-        categories = await loop.run_in_executor(None, get_cached_category_items)
+        categories = await loop.run_in_executor(
+            None,
+            lambda: get_cached_category_items(app.state.qdrant_client),
+        )
         return CategoriesResponse(categories=categories)
     except Exception as e:
         logger.error(
@@ -526,7 +519,12 @@ async def get_browse_results(
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: browse_category(category=category, cursor=cursor, limit=limit),
+            lambda: browse_category(
+                category=category,
+                cursor=cursor,
+                limit=limit,
+                client=app.state.qdrant_client,
+            ),
         )
     except LookupError:
         raise HTTPException(
@@ -551,7 +549,10 @@ async def get_prompt(prompt_id: str) -> PromptResponse:
     """Fetch a single full prompt on demand without running the RAG pipeline."""
     try:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: get_prompt_by_id(prompt_id))
+        return await loop.run_in_executor(
+            None,
+            lambda: get_prompt_by_id(prompt_id, app.state.qdrant_client),
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="Prompt not found")
     except Exception as e:
@@ -574,7 +575,7 @@ async def get_stats() -> StatsResponse:
         loop = asyncio.get_event_loop()
         total_prompts = await loop.run_in_executor(
             None,
-            lambda: get_qdrant_client().count(
+            lambda: app.state.qdrant_client.count(
                 collection_name=QDRANT_COLLECTION_NAME,
                 exact=True,
             ).count,
