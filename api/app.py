@@ -404,23 +404,23 @@ app.add_middleware(
 
 @limiter.limit("10/minute")
 @app.post("/api/query")
-async def query(http_request: Request, request: QueryRequest) -> QueryResponse:
+async def query(request: Request, query_request: QueryRequest) -> QueryResponse:
     """
     Main RAG query endpoint.
 
     Routes all queries through the corpus-grounded retrieval pipeline.
     Applies category filter if provided.
     """
-    if request.category_filter:
-        validate_category_name(request.category_filter)
+    if query_request.category_filter:
+        validate_category_name(query_request.category_filter)
 
     try:
         from .retriever import get_filtered_retriever
         from llama_index.core.query_engine import RetrieverQueryEngine
 
-        if request.category_filter:
+        if query_request.category_filter:
             filtered_retriever = get_filtered_retriever(
-                app.state.index_obj, request.category_filter
+                app.state.index_obj, query_request.category_filter
             )
             engine = RetrieverQueryEngine.from_args(
                 retriever=filtered_retriever,
@@ -434,7 +434,7 @@ async def query(http_request: Request, request: QueryRequest) -> QueryResponse:
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
-            lambda: engine.query(request.query),
+            lambda: engine.query(query_request.query),
         )
 
         # Build results array and technique breakdown
@@ -555,7 +555,7 @@ async def get_browse_results(
 
 @limiter.limit("30/minute")
 @app.get("/api/prompts/{prompt_id}")
-async def get_prompt(http_request: Request, prompt_id: str) -> PromptResponse:
+async def get_prompt(request: Request, prompt_id: str) -> PromptResponse:
     """Fetch a single full prompt on demand without running the RAG pipeline."""
     try:
         loop = asyncio.get_event_loop()
