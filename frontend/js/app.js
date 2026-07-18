@@ -516,13 +516,9 @@ async function loadMoreBrowseResults(button) {
 async function handleCategorySelection(categoryName) {
   clearBrowseAttention();
   state.activeCategory = categoryName;
+  elements.searchInput.value = "";
   renderCategories();
   renderMode();
-
-  if (elements.searchInput.value.trim()) {
-    await runSearch();
-    return;
-  }
 
   state.mode = "browse";
   state.browseLoading = true;
