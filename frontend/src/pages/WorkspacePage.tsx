@@ -49,7 +49,8 @@ function fallbackCategories(): TechniqueCategory[] {
 export function WorkspacePage() {
   const [mode, setMode] = useState<Mode>("search")
   const [query, setQuery] = useState("")
-  const [activeCategory, setActiveCategory] = useState("")
+  const [searchCategory, setSearchCategory] = useState("")
+  const [browseCategoryFilter, setBrowseCategoryFilter] = useState("")
   const [categories, setCategories] = useState<TechniqueCategory[]>(
     fallbackCategories(),
   )
@@ -78,6 +79,9 @@ export function WorkspacePage() {
   const [modalResult, setModalResult] = useState<PromptResult | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const gateAcknowledged = isGateAcknowledged()
+
+  // Derived: active category for the current mode only
+  const activeCategory = mode === "search" ? searchCategory : browseCategoryFilter
 
   useEffect(() => {
     if (!gateAcknowledged) {
@@ -133,19 +137,19 @@ export function WorkspacePage() {
       return hasSearched ? SEARCH_EXPLAINER_ACTIVE : SEARCH_EXPLAINER_IDLE
     }
 
-    if (!activeCategory) {
+    if (!browseCategoryFilter) {
       return "Select a technique category from the sidebar to scroll through raw corpus records."
     }
 
     if (browseLoading || !browseLoaded) {
-      return `Browsing ${categoryLabel(activeCategory)}...`
+      return `Browsing ${categoryLabel(browseCategoryFilter)}...`
     }
 
-    return `Browsing ${formatNumber(browseTotal)} records classified as ${categoryLabel(activeCategory)}.`
+    return `Browsing ${formatNumber(browseTotal)} records classified as ${categoryLabel(browseCategoryFilter)}.`
   }, [
     mode,
     hasSearched,
-    activeCategory,
+    browseCategoryFilter,
     browseLoading,
     browseLoaded,
     browseTotal,
@@ -166,7 +170,7 @@ export function WorkspacePage() {
     try {
       const data = await queryCorpus(
         trimmed,
-        activeCategory || null,
+        searchCategory || null,
         controller.signal,
       )
       setSearchSummary(data.answer || "")
@@ -183,7 +187,7 @@ export function WorkspacePage() {
     } finally {
       setSearchLoading(false)
     }
-  }, [query, activeCategory])
+  }, [query, searchCategory])
 
   const runBrowse = useCallback(
     async (categoryName: string, cursor: string | null = null, append = false) => {
@@ -222,39 +226,36 @@ export function WorkspacePage() {
 
   async function handleCategorySelection(categoryName: string) {
     setAttention(false)
-    setActiveCategory(categoryName)
-    setQuery("")
-    setSearchResults([])
-    setSearchSummary("")
-    setTechniqueBreakdown({})
-    setHasSearched(false)
-    setSearchError(null)
-    setBrowseResults([])
-    setBrowseCursor(null)
-    setBrowseTotal(0)
-    await runBrowse(categoryName)
+    if (mode === "search") {
+      setSearchCategory(categoryName)
+    } else {
+      setBrowseCategoryFilter(categoryName)
+      setBrowseResults([])
+      setBrowseCursor(null)
+      setBrowseTotal(0)
+      await runBrowse(categoryName)
+    }
   }
 
   function clearFilter() {
     setAttention(false)
-    setActiveCategory("")
-    setBrowseResults([])
-    setBrowseCursor(null)
-    setBrowseTotal(0)
-    setBrowseLoaded(false)
-    setBrowseLoading(false)
-    setBrowseError(null)
-    setSearchResults([])
-    setSearchSummary("")
-    setTechniqueBreakdown({})
-    setHasSearched(false)
-    setSearchError(null)
+    if (mode === "search") {
+      setSearchCategory("")
+    } else {
+      setBrowseCategoryFilter("")
+      setBrowseResults([])
+      setBrowseCursor(null)
+      setBrowseTotal(0)
+      setBrowseLoaded(false)
+      setBrowseLoading(false)
+      setBrowseError(null)
+    }
   }
 
   function handleModeChange(next: string) {
     const nextMode = next as Mode
     setMode(nextMode)
-    if (nextMode === "browse" && !activeCategory) {
+    if (nextMode === "browse" && !browseCategoryFilter) {
       setAttention(true)
       window.setTimeout(() => setAttention(false), 1800)
     } else {
@@ -455,7 +456,7 @@ export function WorkspacePage() {
 
                     {mode === "browse" &&
                     !browseLoading &&
-                    activeCategory &&
+                    browseCategoryFilter &&
                     browseResults.length === 0 &&
                     browseLoaded ? (
                       <p className="panel px-5 py-5 text-sm text-muted-foreground">
@@ -483,7 +484,7 @@ export function WorkspacePage() {
                           )}
                           disabled={loadMoreLoading}
                           onClick={() =>
-                            void runBrowse(activeCategory, browseCursor, true)
+                            void runBrowse(browseCategoryFilter, browseCursor, true)
                           }
                         >
                           {loadMoreLoading ? "Loading…" : "Load more"}
