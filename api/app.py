@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from pydantic import BaseModel, Field
 from llama_index.core.schema import MetadataMode
 from llama_index.core.vector_stores.utils import metadata_dict_to_node
@@ -33,8 +34,11 @@ def get_real_client_ip(request: Request) -> str:
     (e.g. in local development without a reverse proxy)."""
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+        resolved_ip = forwarded_for.split(",")[0].strip()
+    else:
+        resolved_ip = request.client.host if request.client else "unknown"
+    logger.warning(f"[RATE LIMIT DEBUG] Resolved client IP: {resolved_ip}")
+    return resolved_ip
 
 
 limiter = Limiter(key_func=get_real_client_ip)
@@ -401,6 +405,7 @@ app = FastAPI(title="RedLib", version="0.1.0", lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Add CORS middleware for local development
 app.add_middleware(
