@@ -239,16 +239,18 @@ Phase 1 - In Development / Production
   schema, and corpus stages, see `docs/ARCHITECTURE.md`.
 - Backend query pipeline is implemented under `api/` and deployed on
   Hetzner behind Nginx at `api-redlib.bynipun.com`
-- Frontend v2 (branch `v2`) is a React + Vite + shadcn rebuild under
-  `frontend/` with the Ink & Platinum design system; design baseline
-  lives in the normative `docs/DESIGN.md`, machine-readable extensions
-  live in `.impeccable/design.json`, and product context lives in `PRODUCT.md`
+- Frontend is a React + Vite + shadcn rebuild under `frontend/` with the
+  Ink & Platinum design system, merged to `main` (PR #1) and live at
+  `redlib.bynipun.com`; the legacy vanilla HTML/CSS/JS frontend was removed
+  in that migration. Design baseline lives in the normative `docs/DESIGN.md`,
+  machine-readable extensions live in `.impeccable/design.json`, and product
+  context lives in `PRODUCT.md`
 - Technique names use frontend-only display aliases defined in
   `frontend/src/lib/taxonomy.ts`; canonical taxonomy names remain unchanged
   in frontend state, API requests/responses, Qdrant, and corpus artifacts
 - Local frontend: `cd frontend && npm run dev` (port 3000, `/api` proxy)
-- Vercel should use Root Directory `frontend`, Build `npm run build`,
-  Output `dist`
+- Vercel uses Root Directory `frontend`, Build `npm run build`, Output `dist`;
+  the React app is confirmed live in production
 - Corpus stages, in order: fetch snapshots sources; convert builds
   canonical records; audit measures quality; normalize cleans prompts;
   discover proposes taxonomy; classify applies approved labels; ingest
@@ -258,4 +260,4 @@ Phase 1 - In Development / Production
   `fastembed==0.8.0` and `slowapi==0.1.10`
 - API deploys run automatically on push to `main`, installing
   dependencies, restarting systemd, and health-checking the API
-- Backend/API contracts were not changed by the v2 frontend rebuild
+- Backend/API contracts were not changed by the frontend rebuild

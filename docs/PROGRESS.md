@@ -1,5 +1,13 @@
 ﻿# RedLib — Progress Log
 
+## 2026-07-19
+Merged the React frontend migration into `main` via PR #1 and confirmed it is
+live at `redlib.bynipun.com`. Vercel serves the Vite production build
+(Root Directory `frontend`, Build `npm run build`, Output `dist`) with no
+config change required. Deleted the merged `v2` branch locally and on the
+remote, and refreshed `AGENTS.md` current state to reflect the frontend now
+living on `main` in production.
+
 ## 2026-07-18
 Polished remaining accessibility gaps found in end-to-end testing: added a
 visually hidden label for the workspace search field, and raised Clear filter,
