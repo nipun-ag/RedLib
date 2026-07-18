@@ -5,8 +5,11 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Union
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field
 from llama_index.core.schema import MetadataMode
 from llama_index.core.vector_stores.utils import metadata_dict_to_node
@@ -23,6 +26,8 @@ from qdrant_client.http.models import (
     PayloadSchemaType,
 )
 from .rag import initialize_pipeline
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 QDRANT_COLLECTION_NAME = "redlib"
@@ -384,6 +389,9 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(title="RedLib", version="0.1.0", lifespan=lifespan)
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Add CORS middleware for local development
 app.add_middleware(
     CORSMiddleware,
@@ -394,8 +402,9 @@ app.add_middleware(
 )
 
 
+@limiter.limit("10/minute")
 @app.post("/api/query")
-async def query(request: QueryRequest) -> QueryResponse:
+async def query(http_request: Request, request: QueryRequest) -> QueryResponse:
     """
     Main RAG query endpoint.
 
@@ -544,8 +553,9 @@ async def get_browse_results(
         )
 
 
+@limiter.limit("30/minute")
 @app.get("/api/prompts/{prompt_id}")
-async def get_prompt(prompt_id: str) -> PromptResponse:
+async def get_prompt(http_request: Request, prompt_id: str) -> PromptResponse:
     """Fetch a single full prompt on demand without running the RAG pipeline."""
     try:
         loop = asyncio.get_event_loop()
