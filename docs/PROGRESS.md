@@ -1,6 +1,82 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-19
+Applied four post-migration UX fixes to the new React frontend, found
+through direct manual testing of the live site rather than code review,
+continuing the same verification discipline used throughout the day's
+earlier work.
+
+AI Summary width:
+- The AI Summary card in `WorkspacePage.tsx` used the Tailwind
+  `max-w-prose` utility, capping its text at roughly 65 characters wide
+  while the `ResultCard` components immediately below it filled the
+  full panel width. This produced a visibly narrower, awkwardly
+  fragmented summary next to full-width result cards.
+- Removed `max-w-prose` from the summary paragraph so it now matches
+  the result cards' width.
+
+Confidence badge removal:
+- `ResultCard.tsx` rendered a HIGH/MED/LOW badge sourced from Cohere's
+  reranking relevance score, with no label or tooltip explaining what
+  it measured. In practice this read as ambiguous or misleading,
+  plausibly interpreted as a severity or quality rating of the prompt
+  itself rather than its relevance to the search query.
+- Removed the badge, the `confidenceClass` helper, the `showConfidence`
+  prop, and the now-unused `ConfidenceLevel` and `cn` imports from
+  `ResultCard.tsx`, and the corresponding `showConfidence` attribute
+  from its call site in `WorkspacePage.tsx`.
+
+Search/Browse category state decoupling (three iterations):
+- Immediately after the React migration, category selection state
+  (`activeCategory`) was still shared between Search and Browse modes,
+  carried over unchanged from the vanilla JS implementation. Selecting
+  a category while browsing silently remained active if the user
+  switched to the Search tab, applying as an invisible filter to
+  search queries with no clear indication why.
+- First iteration: split shared `activeCategory` into independent
+  `searchCategory` and `browseCategoryFilter` state, each mode's
+  category selection no longer affects the other's results or sidebar
+  highlighting. However, this iteration preserved an old feature from
+  the project's original design, clicking a category while already in
+  Search mode combined it into the search rather than switching to
+  Browse, since the two intents (fully separate modes, vs. a
+  cross-mode combine feature) were conflated in the implementing
+  prompt rather than explicitly confirmed first.
+- Second iteration, after direct user testing surfaced the mismatch:
+  clicking a category now unconditionally switches to Browse mode and
+  loads that category, regardless of which tab was active when the
+  click happened, removing the mode-conditional branch entirely.
+  Switching to the Search tab now unconditionally clears
+  `searchCategory`, so Search always starts unfiltered rather than
+  retaining a category from a prior browsing session. Browse mode
+  continues to remember its own last-selected category when the
+  Browse tab is clicked directly (not via a category click).
+
+Why this was needed:
+- All four issues were invisible to code review and to the earlier
+  post-migration audit, which confirmed the migrated code was
+  functionally equivalent to the vanilla original; the vanilla
+  original itself carried the same ambiguous confidence badge and
+  narrow summary width, so equivalence to it was not sufficient to
+  catch either issue. Direct, deliberate use of the live product
+  surfaced problems that a correctness-focused review could not.
+- The category-state saga is a reminder that even a scoped, explicit
+  fix prompt can silently carry forward an old design assumption
+  (the search-mode category-combine feature) if that assumption isn't
+  separately confirmed before implementation; verifying the actual
+  resulting behavior against the stated intent, not just against the
+  prompt's literal acceptance criteria, caught the mismatch.
+
+Verification:
+- Confirmed via live-site testing on `https://redlib.bynipun.com` after
+  each deploy: AI Summary now visually matches result card width;
+  confidence badges no longer appear on any result card; clicking a
+  category from any tab switches to Browse and loads that category;
+  switching to the Search tab always shows no category selected in the
+  sidebar; switching back to Browse still shows the previously selected
+  category.
+
+## 2026-07-19
 Merged the React frontend migration into `main` via PR #1 and confirmed it is
 live at `redlib.bynipun.com`. Vercel serves the Vite production build
 (Root Directory `frontend`, Build `npm run build`, Output `dist`) with no
