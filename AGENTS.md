@@ -273,6 +273,8 @@ Phase 1 - In Development / Production
   the normalized corpus and writes classified corpus artifacts
 - `corpus/ingest.py` consumes the finalized `classified.jsonl` artifact
   for embedding and Qdrant writes
+- Unused `classified_test.jsonl` and `reclassify_unclear_debug/` artifacts
+  have been removed from `data/corpus/`
 - `requirements.txt` pins all production dependencies to exact versions
   verified on Windows/Python 3.13 and Ubuntu/Python 3.12, including
   `fastembed==0.8.0` and `slowapi==0.1.10`

@@ -175,6 +175,7 @@ Public Datasets
 
 ### `classified_with_subtechniques.jsonl`
 - Archive copy of the classified corpus with subtechnique preserved
+- Subtechnique is populated on approximately 90.66% of records (152,411 of 168,117), not all records
 - Retained for future reference only
 - Not consumed by the pipeline
 

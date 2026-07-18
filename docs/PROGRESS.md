@@ -1,6 +1,12 @@
 ﻿# RedLib — Progress Log
 
 ## 2026-07-18
+Removed the unused `data/corpus/classified_test.jsonl` experiment artifact
+and `data/corpus/reclassify_unclear_debug/` output directory. Clarified in
+`docs/ARCHITECTURE.md` that subtechnique coverage in the archive is
+approximately 90.66% (152,411 of 168,117 records).
+
+## 2026-07-18
 Added rate limiting to `/api/query` and `/api/prompts/{prompt_id}` using
 slowapi, and resolved three separate bugs that each silently prevented
 enforcement before the fix actually worked in production.
