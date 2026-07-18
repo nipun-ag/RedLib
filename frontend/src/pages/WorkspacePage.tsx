@@ -406,7 +406,7 @@ export function WorkspacePage() {
                           <h2 className="font-display text-xl text-foreground">
                             AI Summary
                           </h2>
-                          <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
+                          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                             {searchSummary || "No grounded summary returned."}
                           </p>
                           {breakdownEntries.length > 0 ? (
