@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Union
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from llama_index.core.schema import MetadataMode
 from llama_index.core.vector_stores.utils import metadata_dict_to_node
 from llama_index.core.vector_stores import (
@@ -47,7 +47,7 @@ CATEGORY_CACHE: dict[str, object] = {
 
 # Pydantic models
 class QueryRequest(BaseModel):
-    query: str
+    query: str = Field(min_length=1, max_length=1000)
     category_filter: Optional[str] = None
 
 
