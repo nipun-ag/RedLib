@@ -350,7 +350,7 @@ app = FastAPI(title="RedLib", version="0.1.0", lifespan=lifespan)
 # Add CORS middleware for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://redlib.bynipun.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
