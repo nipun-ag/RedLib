@@ -45,3 +45,5 @@ logs/
 ingest_checkpoint.json
 Skills/
 stitch/
+
+.agents/
