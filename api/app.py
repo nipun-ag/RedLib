@@ -29,12 +29,11 @@ from .rag import initialize_pipeline
 
 
 def get_real_client_ip(request: Request) -> str:
-    """Extract the real visitor IP from the X-Forwarded-For header set by Nginx,
-    falling back to the direct connection address if the header is absent
-    (e.g. in local development without a reverse proxy)."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    """Extract the real visitor IP from X-Real-IP set by Nginx (trusted proxy),
+    falling back to the direct connection address in local development."""
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -606,7 +605,7 @@ async def get_stats() -> StatsResponse:
         return StatsResponse(
             total_prompts=total_prompts,
             total_sources=7,
-            last_sync="2026-07-10",
+            last_sync="2026-07-28",
         )
     except Exception as e:
         logger.error(

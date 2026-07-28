@@ -1,5 +1,5 @@
 import { Search } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate } from "react-router-dom"
 
 import { LiquidAtmosphere } from "@/components/LiquidAtmosphere"
@@ -80,6 +80,9 @@ export function WorkspacePage() {
   const [modalOpen, setModalOpen] = useState(false)
   const gateAcknowledged = isGateAcknowledged()
 
+  const searchAbortRef = useRef<AbortController | null>(null)
+  const browseAbortRef = useRef<AbortController | null>(null)
+
   // Derived: active category for the current mode only
   const activeCategory = mode === "search" ? searchCategory : browseCategoryFilter
 
@@ -132,6 +135,13 @@ export function WorkspacePage() {
     return () => controller.abort()
   }, [gateAcknowledged])
 
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort()
+      browseAbortRef.current?.abort()
+    }
+  }, [])
+
   const explainer = useMemo(() => {
     if (mode === "search") {
       return hasSearched ? SEARCH_EXPLAINER_ACTIVE : SEARCH_EXPLAINER_IDLE
@@ -161,7 +171,10 @@ export function WorkspacePage() {
       return
     }
 
+    searchAbortRef.current?.abort()
     const controller = new AbortController()
+    searchAbortRef.current = controller
+
     setMode("search")
     setSearchLoading(true)
     setSearchError(null)
@@ -173,11 +186,13 @@ export function WorkspacePage() {
         searchCategory || null,
         controller.signal,
       )
+      if (controller.signal.aborted) return
       setSearchSummary(data.answer || "")
       setSearchResults(data.results || [])
       setTechniqueBreakdown(data.technique_breakdown || {})
       setHasSearched(true)
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return
       const message =
         error instanceof Error ? error.message : "Search request failed"
       setSearchError(message)
@@ -185,12 +200,16 @@ export function WorkspacePage() {
       setSearchSummary("")
       setTechniqueBreakdown({})
     } finally {
-      setSearchLoading(false)
+      if (!controller.signal.aborted) setSearchLoading(false)
     }
   }, [query, searchCategory])
 
   const runBrowse = useCallback(
     async (categoryName: string, cursor: string | null = null, append = false) => {
+      browseAbortRef.current?.abort()
+      const controller = new AbortController()
+      browseAbortRef.current = controller
+
       setMode("browse")
       setBrowseError(null)
 
@@ -202,7 +221,8 @@ export function WorkspacePage() {
       }
 
       try {
-        const data = await browseCategory(categoryName, cursor, 20)
+        const data = await browseCategory(categoryName, cursor, 20, controller.signal)
+        if (controller.signal.aborted) return
         setBrowseTotal(data.total)
         setBrowseCursor(data.next_cursor || null)
         setBrowseResults((current) =>
@@ -210,6 +230,7 @@ export function WorkspacePage() {
         )
         setBrowseLoaded(true)
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return
         const message =
           error instanceof Error ? error.message : "Browse request failed"
         setBrowseError(message)
@@ -217,8 +238,10 @@ export function WorkspacePage() {
           setBrowseResults([])
         }
       } finally {
-        setBrowseLoading(false)
-        setLoadMoreLoading(false)
+        if (!controller.signal.aborted) {
+          setBrowseLoading(false)
+          setLoadMoreLoading(false)
+        }
       }
     },
     [],
