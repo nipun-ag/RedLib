@@ -1,5 +1,10 @@
 # RedLib - AGENTS.md
 
+## Agent Hub
+All skills, tools, and MCP servers live at `C:/Users/nipun/.ai/`.
+Never create or install skills, tools, or MCP configs at the project level — look there first for any capability.
+Chain: this file → `~/.claude/CLAUDE.md` → `C:/Users/nipun/.ai/AGENTS.md`
+
 ## What This Is
 RedLib is a production-grade RAG tool for AI safety practitioners and
 red teamers searching a curated corpus of real adversarial jailbreak

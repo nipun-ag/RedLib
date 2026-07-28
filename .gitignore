@@ -24,6 +24,7 @@ frontend/.vite/
 
 # Raw data — too large for git
 data
+video
 
 # Claude Code
 .claude/
@@ -47,3 +48,4 @@ Skills/
 stitch/
 
 .agents/
+.impeccable/
