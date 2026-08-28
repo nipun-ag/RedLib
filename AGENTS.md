@@ -1,9 +1,6 @@
 # RedLib - AGENTS.md
 
-## Agent Hub
-All skills, tools, and MCP servers live at `C:/Users/nipun/.ai/`.
-Never create or install skills, tools, or MCP configs at the project level — look there first for any capability.
-Chain: this file → `~/.claude/CLAUDE.md` → `C:/Users/nipun/.ai/AGENTS.md`
+**Last verified:** 2026-08-02 — tech stack, file structure, and conventions checked against actual code.
 
 ## What This Is
 RedLib is a production-grade RAG tool for AI safety practitioners and
@@ -219,24 +216,6 @@ Each corpus-stage script has exactly one responsibility:
 - refactor: restructuring, no behavior change
 - ingest: corpus or ingestion pipeline changes
 - eval: evaluation suite changes
-
-## Self-Updating Meta Instruction
-Trigger this automatically when:
-- A feature is fully working and tested
-- A bug is fixed and confirmed
-- You are about to switch to a different task
-- The user says "done", "ship it", "looks good", "push it",
-  "that works", or any similar confirmation phrase
-Do not wait for explicit wrap up or end session instructions.
-
-After every session:
-1. Update AGENTS.md current state section (keep under 150 lines)
-2. Add a dated entry to `docs/PROGRESS.md` (what changed and why)
-3. Update `docs/DESIGN.md` if any UI changes were made
-4. Update `docs/ARCHITECTURE.md` if any pipeline changes were made
-5. Update `docs/CONTEXT.md` if prompt or synthesis rules changed
-6. Never append session notes to `README.md`
-7. Run `git add . && git commit -m "[type]: description" && git push`
 
 ## Current Project State
 Phase 1 - In Development / Production
